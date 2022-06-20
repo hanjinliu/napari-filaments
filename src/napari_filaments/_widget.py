@@ -1,46 +1,86 @@
-"""
-This module is an example of a barebones QWidget plugin for napari
-
-It implements the Widget specification.
-see: https://napari.org/plugins/guides.html?#widgets
-
-Replace code below according to your needs.
-"""
+from pathlib import Path
 from typing import TYPE_CHECKING
-
-from magicgui import magic_factory
-from qtpy.QtWidgets import QHBoxLayout, QPushButton, QWidget
+import numpy as np
+from magicclass import bind_key, magicclass, vfield, MagicTemplate, do_not_record
+from magicclass.types import Color, Bound
+from ._spline import Spline
+from napari.layers import Image
 
 if TYPE_CHECKING:
-    import napari
+    ...
+    
+@magicclass
+class FilamentAnalyzer(MagicTemplate):
+    color_default = vfield(Color, options={"value": "#F8FF69"}, record=False)
+    color_fit = vfield(Color, options={"value": "#FF11D7"}, record=False)
+    lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)
+    
+    def open_image(self, path: Path):
+        from tifffile import imread
+        img = imread(path)
+        l = self.parent_viewer.add_image(img)
+        self.add_layer(l)
+        
+    def add_layer(self, target_image: Image):
+        self.layer_paths = self.parent_viewer.add_shapes(
+            ndim=target_image.ndim,
+            edge_color=np.asarray(self.color_default), 
+            name="Filaments of " + target_image.name,
+            edge_width=0.5,
+        )
+        self.layer_paths.mode = "add_path"
+        self.layer_image = target_image
+    
+    def _fit_i(self, width: int, idx: int):
+        data: np.ndarray = self.layer_paths.data[idx]
+        # TODO: >3-D
+        img = self.layer_image.data
+        spl = Spline.fit(data, degree=1, err=0.)
+        length = spl.length()
+        interv = min(length, 8.)
+        rough = spl.fit_filament(img, width=width, interval=interv, spline_error=0.)
+        fit = rough.fit_filament(img, width=7, spline_error=3e-2)
+        
+        # update data
+        data = self.layer_paths.data
+        data[idx] = fit.sample(interval=1.0)
+        self.layer_paths.data = data
+        
+        # update color
+        ec = self.layer_paths.edge_color
+        ec[idx] = self.color_fit
+        self.layer_paths.edge_color = ec
+    
+    def _fit_i_extended(self, width: int, idx: int, distances: tuple[float, float]):
+        data: np.ndarray = self.layer_paths.data[idx]
+        img = self.layer_image.data
+        spl = Spline.fit(data, err=0.)
+        fit = spl.extended_fit(img, width=7, spline_error=3e-2, distances=distances)
+        
+        # update data
+        data = self.layer_paths.data
+        data[idx] = fit.sample(interval=1.0)
+        self.layer_paths.data = data
+        
+        # update color
+        ec = self.layer_paths.edge_color
+        ec[idx] = self.color_fit
+        self.layer_paths.edge_color = ec
+    
+    @bind_key("T")
+    def fit_current(self, width: Bound[lattice_width]):
+        self._fit_i(width, -1)
+    
+    def extend_start(self, width: Bound[lattice_width]):
+        self._fit_i_extended(width, -1, (5., 0))
+        
+    def extend_end(self, width: Bound[lattice_width]):
+        self._fit_i_extended(width, -1, (0, 5.))
 
-
-class ExampleQWidget(QWidget):
-    # your QWidget.__init__ can optionally request the napari viewer instance
-    # in one of two ways:
-    # 1. use a parameter called `napari_viewer`, as done here
-    # 2. use a type annotation of 'napari.viewer.Viewer' for any parameter
-    def __init__(self, napari_viewer):
-        super().__init__()
-        self.viewer = napari_viewer
-
-        btn = QPushButton("Click me!")
-        btn.clicked.connect(self._on_click)
-
-        self.setLayout(QHBoxLayout())
-        self.layout().addWidget(btn)
-
-    def _on_click(self):
-        print("napari has", len(self.viewer.layers), "layers")
-
-
-@magic_factory
-def example_magic_widget(img_layer: "napari.layers.Image"):
-    print(f"you have selected {img_layer}")
-
-
-# Uses the `autogenerate: true` flag in the plugin manifest
-# to indicate it should be wrapped as a magicgui to autogenerate
-# a widget.
-def example_function_widget(img_layer: "napari.layers.Image"):
-    print(f"you have selected {img_layer}")
+    def fit_all(self, width: Bound[lattice_width]):
+        for i in range(self.layer_paths.nshapes):
+            self._fit_i(width, i)
+    
+    @do_not_record
+    def create_macro(self):
+        self.macro.widget.duplicate().show()
