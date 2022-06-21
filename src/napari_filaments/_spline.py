@@ -81,6 +81,12 @@ class Spline:
         v = np.diff(out, axis=0)
         return np.sum(np.sqrt(np.sum(v**2, axis=1)))
 
+    def curvature(self, u) -> np.ndarray:
+        dy, dx = self(u, der=1).T
+        ddy, ddx = self(u, der=2).T
+        a = (ddy * dx - ddx * dy) ** 2
+        return np.sqrt(a) / (dx**2 + dy**2) ** 1.5
+
     def get_profile(
         self,
         image: np.ndarray,
@@ -307,15 +313,9 @@ class Spline:
         opt = _opt.TwosideErfOptimizer().optimize(prof)
 
         mu0, mu1 = opt.params[:2]
-        ndata = prof.size
+        tot = prof.size - 1
 
-        # import matplotlib.pyplot as plt
-
-        # plt.plot(x, prof, color="gray")
-        # yfit = opt.sample(x)
-        # plt.plot(x, yfit, color="red")
-        # plt.show()
-        return self.clip(mu0 / ndata, mu1 / ndata)
+        return self.clip(mu0 / tot, mu1 / tot)
 
     def clip_at_inflection_left(self, image: np.ndarray, **map_kwargs) -> Self:
         prof = self.get_profile(image, **map_kwargs)
@@ -324,7 +324,7 @@ class Spline:
         mu = opt.params[0]
         ndata = prof.size
 
-        return self.clip(mu / ndata, 1.0)
+        return self.clip(mu / (ndata - 1), 1.0)
 
     def clip_at_inflection_right(
         self, image: np.ndarray, **map_kwargs
@@ -335,4 +335,4 @@ class Spline:
         mu = opt.params[0]
         ndata = prof.size
 
-        return self.clip(0.0, 1.0 - mu / ndata)
+        return self.clip(0.0, mu / (ndata - 1))

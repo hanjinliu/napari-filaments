@@ -62,10 +62,6 @@ class FilamentAnalyzer(MagicTemplate):
     lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)
     dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
 
-    def __post_init__(self):
-        self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
-        self._last_data: np.ndarray = None
-
     # fmt: off
     @magictoolbar
     class Tools(MagicTemplate):
@@ -73,6 +69,10 @@ class FilamentAnalyzer(MagicTemplate):
         class Layers(MagicTemplate):
             def open_image(self): ...
             def add_filament_layer(self): ...
+
+        @magicmenu
+        class Others(MagicTemplate):
+            def create_macro(self): ...
 
     @magicclass(widget_type="tabbed")
     class Tabs(MagicTemplate):
@@ -110,12 +110,15 @@ class FilamentAnalyzer(MagicTemplate):
         class Measure(MagicTemplate):
             def measure_length(self): ...
             def plot_profile(self): ...
+            def plot_curvature(self): ...
             plt = field(Figure)
 
     # fmt: on
 
     def __init__(self):
         self.layer_paths = None
+        self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
+        self._last_data: np.ndarray = None
 
     def _get_idx(self, w=None) -> Union[int, set[int]]:
         if self.layer_paths is None:
@@ -349,6 +352,20 @@ class FilamentAnalyzer(MagicTemplate):
         print(spl.length())
 
     @Tabs.Measure.wraps
+    def plot_curvature(
+        self,
+        idx: Bound[_get_idx],
+    ):
+        """Plot curvature of filament."""
+        _, spl = self._get_slice_and_spline(idx)
+        cv = spl.curvature(np.linspace(0, 1, int(spl.length())))
+        plt = self.Tabs.Measure.plt
+        plt.cla()
+        plt.ylabel("Curvature")
+        plt.plot(cv)
+        plt.show()
+
+    @Tabs.Measure.wraps
     def plot_profile(
         self,
         image: Bound[target_image],
@@ -357,9 +374,11 @@ class FilamentAnalyzer(MagicTemplate):
         """Plot intensity profile."""
         current_slice, spl = self._get_slice_and_spline(idx)
         prof = spl.get_profile(image.data[current_slice])
-
-        self.Tabs.Measure.plt.plot(prof)
-        self.Tabs.Measure.plt.show()
+        plt = self.Tabs.Measure.plt
+        plt.cla()
+        plt.ylabel("Intensity")
+        plt.plot(prof)
+        plt.show()
 
     @Tabs.Img.wraps
     @set_options(wlayers={"layout": "vertical"})
@@ -388,6 +407,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.layer_paths.selected_data = idx
         self.layer_paths.remove_selected()
 
+    @Tools.Others.wraps
     @do_not_record
     def create_macro(self):
         self.macro.widget.duplicate().show()
