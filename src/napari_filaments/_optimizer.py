@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Union
 
 import numpy as np
 from scipy.optimize import curve_fit
-from scipy.special import erf as sp_erf
+from scipy.special import erf
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -37,9 +37,9 @@ class Optimizer(ABC):
     def multi_optimize(cls, arr: np.ndarray) -> np.ndarray:
         x = np.arange(arr.shape[1])
         results: list[np.ndarray] = []
-        for i, ydata in enumerate(arr):
+        for ydata in arr:
             params, bounds = cls.initialize(ydata)
-            params, cov = curve_fit(cls.model, x, ydata, params, bounds=bounds)
+            params, _ = curve_fit(cls.model, x, ydata, params, bounds=bounds)
             results.append(params)
         return np.stack(results, axis=0)
 
@@ -82,7 +82,7 @@ class ErfOptimizer(Optimizer):
     @staticmethod
     def model(xdata: np.ndarray, mu, sg, a, b):
         x0 = (xdata - mu) / sg
-        return (a - b) / 2 * (1 + sp_erf(x0) / sq2) + b
+        return (a - b) / 2 * (1 + erf(x0) / sq2) + b
 
     @staticmethod
     def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:
