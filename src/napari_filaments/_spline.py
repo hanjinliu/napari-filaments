@@ -6,57 +6,13 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 import numpy as np
 from scipy import ndimage as ndi
 from scipy.interpolate import splev, splprep
-from scipy.optimize import curve_fit
-from scipy.special import erf as sp_erf
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
     _TCK = tuple[tuple[np.ndarray, list[np.ndarray], int], np.ndarray]
 
-sq2 = np.sqrt(2)
-
-
-def gaussian(x, mu: float, sg: float, a: float, b: float):
-    """1-D Gaussian."""
-    return a * np.exp(-((x - mu) ** 2) / (2 * sg**2)) + b
-
-
-def erf(x, mu: float, sg: float, a: float, b: float):
-    """Normalized error function."""
-    x0 = (x - mu) / sg
-    return (a - b) / 2 * (1 + sp_erf(x0) / sq2) + b
-
-
-def two_side_erf(
-    x, mu1: float, mu2: float, sg: float, a: float, b1: float, b2: float
-):
-    r"""
-          a ______________
-           /              \_____ b1
-    b0 ___/
-          mu1            mu2
-    """
-    return erf(x, mu1, sg, a, b1) - erf(x, mu2, sg, a - b2, 0)
-
-
-def fit(img: np.ndarray) -> np.ndarray:
-    """Filament in y-direction."""
-    x = np.arange(img.shape[1])
-    centers = np.zeros((img.shape[0]), dtype=np.float64)
-    bounds = ([0.0, 0.0, 0.0, -np.inf], [img.shape[1], np.inf, np.inf, np.inf])
-    for i, line in enumerate(img):
-        argmax = np.argmax(line)
-        p0 = [argmax, 2, line[argmax], 0]
-        params, cov = curve_fit(gaussian, x, line, p0, bounds=bounds)
-        centers[i] = params[0]
-    return centers
-
-
-def get_shift(img: np.ndarray):
-    centers = fit(img)
-    c0 = (img.shape[1] - 1) / 2
-    return centers - c0
+from . import _optimizer as _opt
 
 
 class Spline:
@@ -187,13 +143,16 @@ class Spline:
         )  # N, 2, W
         # ready for ndi.map_coordinates
         lat = np.moveaxis(lattice, 1, 0)
-        image_trans = ndi.map_coordinates(image, lat, **map_kwargs)
+        image_trans: np.ndarray = ndi.map_coordinates(image, lat, **map_kwargs)
         sigma = longitudinal_sigma / interval
         if sigma > 0:
             ndi.gaussian_filter1d(
                 image_trans, sigma=sigma, axis=0, output=image_trans
             )
-        shift = get_shift(image_trans)
+
+        centers = _opt.GaussianOptimizer.multi_optimize(image_trans)[:, 0]
+        c0 = (image_trans.shape[1] - 1) / 2
+        shift = centers - c0
         shift2d: np.ndarray = h_dir * shift[:, np.newaxis]
         out = positions + shift2d
 
@@ -346,23 +305,35 @@ class Spline:
 
     def clip_at_inflections(self, image: np.ndarray, **map_kwargs) -> Self:
         prof = self.get_profile(image, **map_kwargs)
-        ndata = prof.size
-        x = np.arange(ndata)
-        xc = ndata // 2
-        p0 = [
-            2,
-            ndata - 2,
-            1.0,
-            np.max(prof),
-            np.min(prof[:xc]),
-            np.min(prof[xc:]),
-        ]
-        param, cov = curve_fit(two_side_erf, x, prof, p0)
-        mu0, mu1 = param[:2]
-        import matplotlib.pyplot as plt
+        opt = _opt.TwosideErfOptimizer().optimize(prof)
 
-        plt.plot(x, prof, color="gray")
-        yfit = two_side_erf(x, *param)
-        plt.plot(x, yfit, color="red")
-        plt.show()
+        mu0, mu1 = opt.params[:2]
+        ndata = prof.size
+
+        # import matplotlib.pyplot as plt
+
+        # plt.plot(x, prof, color="gray")
+        # yfit = opt.sample(x)
+        # plt.plot(x, yfit, color="red")
+        # plt.show()
         return self.clip(mu0 / ndata, mu1 / ndata)
+
+    def clip_at_inflection_left(self, image: np.ndarray, **map_kwargs) -> Self:
+        prof = self.get_profile(image, **map_kwargs)
+        opt = _opt.ErfOptimizer().optimize(prof)
+
+        mu = opt.params[0]
+        ndata = prof.size
+
+        return self.clip(mu / ndata, 1.0)
+
+    def clip_at_inflection_right(
+        self, image: np.ndarray, **map_kwargs
+    ) -> Self:
+        prof = self.get_profile(image, **map_kwargs)
+        opt = _opt.ErfOptimizer().optimize(prof)
+
+        mu = opt.params[0]
+        ndata = prof.size
+
+        return self.clip(0.0, 1.0 - mu / ndata)
