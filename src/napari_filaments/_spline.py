@@ -48,26 +48,25 @@ class Spline:
 
     @classmethod
     def fit(cls, points: np.ndarray, degree: int = 3, err: float = 1e-2):
+        points = np.asarray(points)
         npoints = points.shape[0]
-        tck = splprep(np.asarray(points).T, s=npoints * err**2, k=degree)
+        weights = np.ones(npoints)
+        weights[0] = weights[-1] = 0.5
+        tck = splprep(points.T, s=npoints * err**2, k=degree, w=weights)
         return cls(tck)
 
     @property
     def nknots(self) -> int:
+        """Return the number of knots in spline."""
         return self._tck[0][0].size
 
     @property
     def degree(self) -> int:
+        """Return the degree of spline."""
         return self._tck[0][2]
 
-    def section(self, range: tuple[float, float], npoints: int = 12) -> Self:
-        s0, s1 = range
-        if not ((0 <= s0 <= 1) and (0 <= s1 <= 1)):
-            raise ValueError("`range` must be a sub-range of [0, 1].")
-        coords = self(np.linspace(s0, s1, npoints))
-        return self.fit(coords, degree=self.degree, err=0.0)
-
     def connect(self, other: Self) -> Self:
+        """Connect splines"""
         coords0 = self.sample(npoints=self.nknots * 3)
         coords1 = other.sample(npoints=other.nknots * 3)
         connection = (coords0[-1:] + coords1[:1]) / 2
@@ -171,8 +170,8 @@ class Spline:
     ) -> Self:
         if border < 0 or 1 < border:
             raise ValueError("`border` must be in range of [0, 1].")
-        spl_left = self.section((0.0, border))
-        spl_right = self.section((border, 1.0))
+        spl_left = self.clip(0.0, border)
+        spl_right = self.clip(border, 1.0)
         spl_fit = spl_left.fit_filament(
             image,
             width=width,
@@ -262,8 +261,8 @@ class Spline:
     ) -> Self:
         if border < 0 or 1 < border:
             raise ValueError("`border` must be in range of [0, 1].")
-        spl_left = self.section((0.0, border))
-        spl_right = self.section((border, 1.0))
+        spl_left = self.clip(0.0, border)
+        spl_right = self.clip(border, 1.0)
         spl_fit = spl_right.fit_filament(
             image,
             width=width,
