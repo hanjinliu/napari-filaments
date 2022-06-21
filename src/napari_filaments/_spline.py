@@ -7,11 +7,14 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy.interpolate import splev, splprep
 from scipy.optimize import curve_fit
+from scipy.special import erf as sp_erf
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
     _TCK = tuple[tuple[np.ndarray, list[np.ndarray], int], np.ndarray]
+
+sq2 = np.sqrt(2)
 
 
 def gaussian(x, mu: float, sg: float, a: float, b: float):
@@ -19,14 +22,32 @@ def gaussian(x, mu: float, sg: float, a: float, b: float):
     return a * np.exp(-((x - mu) ** 2) / (2 * sg**2)) + b
 
 
+def erf(x, mu: float, sg: float, a: float, b: float):
+    x0 = (x - mu) / sg
+    return (a - b) / 2 * (1 + sp_erf(x0) / sq2) + b
+
+
+def two_side_erf(
+    x, mu1: float, mu2: float, sg: float, a: float, b1: float, b2: float
+):
+    r"""
+          a ______________
+           /              \_____ b1
+    b0 ___/
+          mu1            mu2
+    """
+    return erf(x, mu1, sg, a, b1) - erf(x, mu2, sg, a - b2, 0)
+
+
 def fit(img: np.ndarray) -> np.ndarray:
     """Filament in y-direction."""
     x = np.arange(img.shape[1])
     centers = np.zeros((img.shape[0]), dtype=np.float64)
+    bounds = ([0.0, 0.0, 0.0, -np.inf], [img.shape[1], np.inf, np.inf, np.inf])
     for i, line in enumerate(img):
         argmax = np.argmax(line)
         p0 = [argmax, 2, line[argmax], 0]
-        params, cov = curve_fit(gaussian, x, line, p0)
+        params, cov = curve_fit(gaussian, x, line, p0, bounds=bounds)
         centers[i] = params[0]
     return centers
 
@@ -99,7 +120,7 @@ class Spline:
         return self.fit(coords, degree=max(self.degree, other.degree), err=0.0)
 
     @lru_cache
-    def length(self, n: int = 512) -> float:
+    def length(self, n: int = 1024) -> float:
         out = self(np.linspace(0, 1, n))
         v = np.diff(out, axis=0)
         return np.sum(np.sqrt(np.sum(v**2, axis=1)))
@@ -317,3 +338,30 @@ class Spline:
             spline_error=spline_error,
             **map_kwargs,
         )
+
+    def clip(self, start: float, stop: float) -> Self:
+        coords = self(np.linspace(start, stop, int(self.length())))
+        return self.fit(coords, degree=self.degree, err=0.0)
+
+    def clip_at_inflection(self, image: np.ndarray, **map_kwargs) -> Self:
+        prof = self.get_profile(image, **map_kwargs)
+        ndata = prof.size
+        x = np.arange(ndata)
+        xc = ndata // 2
+        p0 = [
+            2,
+            ndata - 2,
+            1.0,
+            np.max(prof),
+            np.min(prof[:xc]),
+            np.min(prof[xc:]),
+        ]
+        param, cov = curve_fit(two_side_erf, x, prof, p0)
+        mu0, mu1 = param[:2]
+        import matplotlib.pyplot as plt
+
+        plt.plot(x, prof, color="gray")
+        yfit = two_side_erf(x, *param)
+        plt.plot(x, yfit, color="red")
+        plt.show()
+        return self.clip(mu0 / ndata, mu1 / ndata)
