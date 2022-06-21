@@ -81,8 +81,8 @@ class GaussianOptimizer(Optimizer):
 class ErfOptimizer(Optimizer):
     @staticmethod
     def model(xdata: np.ndarray, mu, sg, a, b):
-        x0 = (xdata - mu) / sg
-        return (a - b) / 2 * (1 + erf(x0) / sq2) + b
+        x0 = (xdata - mu) / sg / sq2
+        return (a - b) / 2 * (1 + erf(x0)) + b
 
     @staticmethod
     def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:

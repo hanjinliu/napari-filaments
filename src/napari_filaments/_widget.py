@@ -9,6 +9,7 @@ from magicclass import (
     bind_key,
     do_not_record,
     magicclass,
+    set_design,
     set_options,
     vfield,
 )
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     _P = ParamSpec("_P")
     _R = TypeVar("_R")
 
-Weightened = tuple[weight, Image]
+ICON_DIR = Path(__file__).parent / "_icon"
 
 
 def batch(f: "Callable[_P, _R]") -> "Callable[_P, _R]":
@@ -66,6 +67,7 @@ class FilamentAnalyzer(MagicTemplate):
                 def extend_left(self): ...
                 def extend_and_fit_left(self): ...
                 def clip_left(self): ...
+                def clip_left_at_inflection(self): ...
 
             @magicclass(widget_type="groupbox")
             class Both(MagicTemplate):
@@ -79,6 +81,7 @@ class FilamentAnalyzer(MagicTemplate):
                 def extend_right(self): ...
                 def extend_and_fit_right(self): ...
                 def clip_right(self): ...
+                def clip_right_at_inflection(self): ...
 
         @magicclass(name="Image")
         class Img(MagicTemplate):
@@ -192,6 +195,9 @@ class FilamentAnalyzer(MagicTemplate):
         return current_slice, spl
 
     @Tabs.Spline.Left.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "ext_l.png"
+    )
     @batch
     def extend_left(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -199,6 +205,9 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Right.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "ext_r.png"
+    )
     @batch
     def extend_right(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -207,6 +216,12 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Left.wraps
     @batch
+    @set_design(
+        text="",
+        min_width=42,
+        min_height=42,
+        icon_path=ICON_DIR / "extfit_l.png",
+    )
     def extend_and_fit_left(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
         fit = spl.extend_filament_left(
@@ -215,6 +230,12 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
+    @set_design(
+        text="",
+        min_width=42,
+        min_height=42,
+        icon_path=ICON_DIR / "extfit_r.png",
+    )
     @batch
     def extend_and_fit_right(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -224,6 +245,9 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Left.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "clip_l.png"
+    )
     @batch
     def clip_left(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -232,11 +256,34 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "clip_r.png"
+    )
     @batch
     def clip_right(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
         current_slice, spl = self._get_slice_and_spline(idx)
         stop = 1.0 - dx / spl.length()
         fit = spl.clip(0.0, stop)
+        self._update_paths(idx, fit, current_slice)
+
+    @Tabs.Spline.Left.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "erf_l.png"
+    )
+    @batch
+    def clip_left_at_inflection(self, idx: Bound[_get_idx]):
+        current_slice, spl = self._get_slice_and_spline(idx)
+        fit = spl.clip_at_inflection_left(self.image[current_slice])
+        self._update_paths(idx, fit, current_slice)
+
+    @Tabs.Spline.Right.wraps
+    @set_design(
+        text="", min_width=42, min_height=42, icon_path=ICON_DIR / "erf_r.png"
+    )
+    @batch
+    def clip_right_at_inflection(self, idx: Bound[_get_idx]):
+        current_slice, spl = self._get_slice_and_spline(idx)
+        fit = spl.clip_at_inflection_right(self.image[current_slice])
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Both.wraps
@@ -262,7 +309,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Img.wraps
     @set_options(wlayers={"layout": "vertical"})
-    def create_total_intensity(self, wlayers: list[Weightened]):
+    def create_total_intensity(self, wlayers: list[tuple[weight, Image]]):
         weights = [t[0] for t in wlayers]
         imgs = [t[1].data for t in wlayers]
         names = [t[1].name for t in wlayers]
