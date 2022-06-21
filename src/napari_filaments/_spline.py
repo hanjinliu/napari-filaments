@@ -1,8 +1,13 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy import ndimage as ndi
 from scipy.interpolate import splprep, splev
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+    _TCK = tuple[tuple[np.ndarray, list[np.ndarray], int], np.ndarray]
 
 def gaussian(x, mu: float, sg: float, a: float, b: float):
     """1-D Gaussian."""
@@ -25,12 +30,19 @@ def get_shift(img: np.ndarray):
     return centers - c0
 
 class Spline:
-    def __init__(self, tck):
-        self.tck = tck
+    """A spline representation."""
+    
+    def __init__(self, tck: _TCK):
+        self._tck = tck
     
     def __call__(self, u, *, der: int = 0) -> np.ndarray:
-        spl = splev(u, self.tck[0], der=der)
+        scalar = np.isscalar(u)
+        if scalar:
+            u = [u]
+        spl = splev(u, self._tck[0], der=der)
         out = np.stack(spl, axis=1)
+        if scalar:
+            out = out[0]
         return out
     
     def sample(self, *, npoints: int | None = None, interval: float | None = None):
@@ -48,6 +60,28 @@ class Spline:
         npoints = points.shape[0]
         tck = splprep(np.asarray(points).T, s = npoints * err ** 2, k=degree)
         return cls(tck)
+    
+    @property
+    def nknots(self) -> int:
+        return self._tck[0][0].size
+    
+    @property
+    def degree(self) -> int:
+        return self._tck[0][2]
+    
+    def section(self, range: tuple[float, float], npoints: int = 12) -> Self:
+        s0, s1 = range
+        if not ((0 <= s0 <= 1) and (0 <= s1 <= 1)):
+            raise ValueError("`range` must be a sub-range of [0, 1].")
+        coords = self(np.linspace(s0, s1, npoints))
+        return self.fit(coords, degree=self.degree, err=0.)
+    
+    def connect(self, other: Self) -> Self:
+        coords0 = self.sample(npoints=self.nknots*3)
+        coords1 = other.sample(npoints=other.nknots*3)
+        connection = (coords0[-1:] + coords1[:1]) / 2
+        coords = np.concatenate([coords0[:-1], connection, coords1[1:]], axis=0)
+        return self.fit(coords, degree=max(self.degree, other.degree), err=0.)
     
     def length(self, n: int = 512) -> float:
         out = self(np.linspace(0, 1, n))
@@ -71,11 +105,12 @@ class Spline:
         image: np.ndarray,
         *,
         width: int = 11,
+        degree: int = 3,
         longitudinal_sigma: float = 1.0,
         interval: float | None = None,
         spline_error: float = 0.,
         **map_kwargs,
-    ) -> Spline:
+    ) -> Self:
         length = self.length()
         if length < 2:
             raise ValueError(f"Spline is too short ({length:.3f} pixel).")
@@ -102,38 +137,123 @@ class Spline:
         shift2d: np.ndarray = h_dir * shift[:, np.newaxis]
         out = positions + shift2d
 
-        return self.fit(out, err=spline_error)
+        return self.fit(out, degree=degree, err=spline_error)
 
-    def extend_edges(self, start: float = 0., end: float = 0.) -> Spline:
-        points = self.sample(interval=3)
-        vec0, vec1 = self([0, 1], der=1)
-        n0 = vec0 / np.sqrt(np.sum(vec0**2))
-        n1 = vec1 / np.sqrt(np.sum(vec1**2))
-        if start > 0:
-            e0 = (points[0] - n0 * start).reshape(1, -1)
-        else:
-            e0 = np.empty((0, 2))
-        if end > 0:
-            e1 = (points[-1] + n1 * end).reshape(1, -1)
-        else:
-            e1 = np.empty((0, 2))
-        extended = np.concatenate([e0, points, e1], axis=0)
-        return self.fit(extended, err=0.)
-
-    def extended_fit(
+    def fit_filament_left(
         self,
         image: np.ndarray,
+        border: float,
         *,
-        distances: tuple[float, float] = (5, 5),
         width: int = 11,
         longitudinal_sigma: float = 1.0,
         interval: float | None = None,
         spline_error: float = 0.,
         **map_kwargs,
-    ) -> Spline:
-        spl = self.extend_edges(*distances)
-        return spl.fit_filament(
+    ) -> Self:
+        if border < 0 or 1 < border:
+            raise ValueError("`border` must be in range of [0, 1].")
+        spl_left = self.section((0., border))
+        spl_right = self.section((border, 1.0))
+        spl_fit = spl_left.fit_filament(
             image,
+            width=width,
+            degree=self.degree,
+            longitudinal_sigma=longitudinal_sigma,
+            interval=interval,
+            spline_error=spline_error,
+            **map_kwargs,
+        )
+        return spl_fit.connect(spl_right)
+    
+    def extend_filament_left(
+        self,
+        image: np.ndarray,
+        length: float,
+        *,
+        width: int = 11,
+        longitudinal_sigma: float = 1.0,
+        interval: float = 1.,
+        spline_error: float = 0.,
+        **map_kwargs,
+    ) -> Self:
+        points = self.sample(npoints=self.nknots*3)
+        l = self.length()
+        vec = self(interval/l, der=1)
+        norm = vec / np.sqrt(np.sum(vec**2))
+        n_ext = int(length/interval)
+        
+        edge_points = (
+            points[0][np.newaxis]
+            - norm[np.newaxis] * np.linspace(length/n_ext, length, n_ext)[::-1, np.newaxis]
+        )
+        extended = np.concatenate([edge_points, points], axis=0)
+        spl = self.fit(extended, degree=self.degree, err=0.)
+        border = (length + 2 * interval) / (l + length)
+        return spl.fit_filament_left(
+            image,
+            border,
+            width=width,
+            longitudinal_sigma=longitudinal_sigma,
+            interval=interval,
+            spline_error=spline_error,
+            **map_kwargs,
+        )
+    
+    def fit_filament_right(
+        self,
+        image: np.ndarray,
+        border: float,
+        *,
+        width: int = 11,
+        longitudinal_sigma: float = 1.0,
+        interval: float | None = None,
+        spline_error: float = 0.,
+        **map_kwargs,
+    ) -> Self:
+        if border < 0 or 1 < border:
+            raise ValueError("`border` must be in range of [0, 1].")
+        spl_left = self.section((0., border))
+        spl_right = self.section((border, 1.0))
+        spl_fit = spl_right.fit_filament(
+            image,
+            width=width,
+            degree=self.degree,
+            longitudinal_sigma=longitudinal_sigma,
+            interval=interval,
+            spline_error=spline_error,
+            **map_kwargs,
+        )
+        return spl_left.connect(spl_fit)
+
+    
+    def extend_filament_right(
+        self,
+        image: np.ndarray,
+        length: float,
+        *,
+        width: int = 11,
+        longitudinal_sigma: float = 1.0,
+        interval: float = 1.,
+        spline_error: float = 0.,
+        **map_kwargs,
+    ) -> Self:
+        points = self.sample(npoints=self.nknots*3)
+        l = self.length()
+        vec = self(1. - interval/l, der=1)
+        norm = vec / np.sqrt(np.sum(vec**2))
+        n_ext = int(length/interval)
+        
+        edge_points = (
+            points[-1][np.newaxis]
+            + norm[np.newaxis] * np.linspace(length/n_ext, length, n_ext)[:, np.newaxis]
+        )
+        
+        extended = np.concatenate([points, edge_points], axis=0)
+        spl = self.fit(extended, degree=self.degree, err=0.)
+        border = (l - 2 * interval) / (l + length)
+        return spl.fit_filament_right(
+            image,
+            border,
             width=width,
             longitudinal_sigma=longitudinal_sigma,
             interval=interval,

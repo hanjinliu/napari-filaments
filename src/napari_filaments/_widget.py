@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
     color_default = vfield(Color, options={"value": "#F8FF69"}, record=False)
-    color_fit = vfield(Color, options={"value": "#FF11D7"}, record=False)
     lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)
     
     def open_image(self, path: Path):
@@ -31,6 +30,11 @@ class FilamentAnalyzer(MagicTemplate):
         self.layer_paths.mode = "add_path"
         self.layer_image = target_image
     
+    def _update_paths(self, idx: int, spl: Spline):
+        data = self.layer_paths.data
+        data[idx] = spl.sample(interval=1.0)
+        self.layer_paths.data = data
+        
     def _fit_i(self, width: int, idx: int):
         data: np.ndarray = self.layer_paths.data[idx]
         # TODO: >3-D
@@ -41,41 +45,27 @@ class FilamentAnalyzer(MagicTemplate):
         rough = spl.fit_filament(img, width=width, interval=interv, spline_error=0.)
         fit = rough.fit_filament(img, width=7, spline_error=3e-2)
         
-        # update data
-        data = self.layer_paths.data
-        data[idx] = fit.sample(interval=1.0)
-        self.layer_paths.data = data
+        self._update_paths(idx, fit)
         
-        # update color
-        ec = self.layer_paths.edge_color
-        ec[idx] = self.color_fit
-        self.layer_paths.edge_color = ec
-    
-    def _fit_i_extended(self, width: int, idx: int, distances: tuple[float, float]):
-        data: np.ndarray = self.layer_paths.data[idx]
-        img = self.layer_image.data
-        spl = Spline.fit(data, err=0.)
-        fit = spl.extended_fit(img, width=7, spline_error=3e-2, distances=distances)
-        
-        # update data
-        data = self.layer_paths.data
-        data[idx] = fit.sample(interval=1.0)
-        self.layer_paths.data = data
-        
-        # update color
-        ec = self.layer_paths.edge_color
-        ec[idx] = self.color_fit
-        self.layer_paths.edge_color = ec
-    
     @bind_key("T")
     def fit_current(self, width: Bound[lattice_width]):
         self._fit_i(width, -1)
     
-    def extend_start(self, width: Bound[lattice_width]):
-        self._fit_i_extended(width, -1, (5., 0))
+    def extend_left(self):
+        data: np.ndarray = self.layer_paths.data[-1]
+        img = self.layer_image.data
+        spl = Spline.fit(data, err=0.)
+        fit = spl.extend_filament_left(img, 5, width=11, spline_error=3e-2)
         
-    def extend_end(self, width: Bound[lattice_width]):
-        self._fit_i_extended(width, -1, (0, 5.))
+        self._update_paths(-1, fit)
+        
+    def extend_right(self):
+        data: np.ndarray = self.layer_paths.data[-1]
+        img = self.layer_image.data
+        spl = Spline.fit(data, err=0.)
+        fit = spl.extend_filament_right(img, 5, width=11, spline_error=3e-2)
+        
+        self._update_paths(-1, fit)
 
     def fit_all(self, width: Bound[lattice_width]):
         for i in range(self.layer_paths.nshapes):
