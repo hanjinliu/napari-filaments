@@ -23,6 +23,7 @@ def gaussian(x, mu: float, sg: float, a: float, b: float):
 
 
 def erf(x, mu: float, sg: float, a: float, b: float):
+    """Normalized error function."""
     x0 = (x - mu) / sg
     return (a - b) / 2 * (1 + sp_erf(x0) / sq2) + b
 
@@ -343,7 +344,7 @@ class Spline:
         coords = self(np.linspace(start, stop, int(self.length())))
         return self.fit(coords, degree=self.degree, err=0.0)
 
-    def clip_at_inflection(self, image: np.ndarray, **map_kwargs) -> Self:
+    def clip_at_inflections(self, image: np.ndarray, **map_kwargs) -> Self:
         prof = self.get_profile(image, **map_kwargs)
         ndata = prof.size
         x = np.arange(ndata)
