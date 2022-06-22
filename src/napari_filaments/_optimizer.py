@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractstaticmethod
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Tuple, Union
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 sq2 = np.sqrt(2)
-Bounds = tuple[Union[np.ndarray, float], Union[np.ndarray, float]]
+Bounds = Tuple[Union[np.ndarray, float], Union[np.ndarray, float]]
 
 
 class Optimizer(ABC):
