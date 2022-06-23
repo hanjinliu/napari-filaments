@@ -69,6 +69,7 @@ class FilamentAnalyzer(MagicTemplate):
         class Layers(MagicTemplate):
             def open_image(self): ...
             def add_filament_layer(self): ...
+            def create_total_intensity(self): ...
 
         @magicmenu
         class Others(MagicTemplate):
@@ -130,6 +131,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.wraps
     def open_image(self, path: Path):
+        """Open a TIF."""
         path = Path(path)
         from tifffile import TiffFile
 
@@ -161,6 +163,7 @@ class FilamentAnalyzer(MagicTemplate):
     def add_filament_layer(
         self, target_image: Image, name: Optional[str] = None
     ):
+        """Add a Shapes layer for the target image."""
         if name is None:
             name = target_image.name
             if mactched := re.findall(r"\[.*\](.+)", name):
@@ -380,15 +383,16 @@ class FilamentAnalyzer(MagicTemplate):
         plt.plot(prof)
         plt.show()
 
-    @Tabs.Img.wraps
-    @set_options(wlayers={"layout": "vertical"})
+    @Tools.Layers.wraps
+    @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
     def create_total_intensity(self, wlayers: list[tuple[weight, Image]]):
+        """Create a total intensity layer from multiple images."""
         weights = [t[0] for t in wlayers]
         imgs = [t[1].data for t in wlayers]
         names = [t[1].name for t in wlayers]
         tot = sum(w * img for w, img in zip(weights, imgs))
 
-        outs: set[str] = set()
+        outs = set()
         for name in names:
             matched = re.findall(r"\[.*\] (.+)", name)
             if matched:
@@ -402,6 +406,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "del.png")
     def delete_current(self, idx: Bound[_get_idx]):
+        """Delete selected (or the last) path."""
         if isinstance(idx, int):
             idx = {idx}
         self.layer_paths.selected_data = idx
@@ -410,6 +415,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tools.Others.wraps
     @do_not_record
     def create_macro(self):
+        """Create an executable Python script."""
         self.macro.widget.duplicate().show()
 
 
