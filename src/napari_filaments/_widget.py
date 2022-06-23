@@ -1,7 +1,7 @@
 import re
 from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, TypeVar, Union
+from typing import TYPE_CHECKING, Callable, List, Set, Tuple, TypeVar, Union
 
 import numpy as np
 from magicclass import (
@@ -121,7 +121,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._last_data: np.ndarray = None
 
-    def _get_idx(self, w=None) -> Union[int, set[int]]:
+    def _get_idx(self, w=None) -> Union[int, Set[int]]:
         if self.layer_paths is None:
             return 0
         sel = self.layer_paths.selected_data
@@ -181,7 +181,7 @@ class FilamentAnalyzer(MagicTemplate):
             self._last_data = None
 
     def _update_paths(
-        self, idx: int, spl: Spline, current_slice: tuple[int, ...] = ()
+        self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
     ):
         if idx < 0:
             idx += self.layer_paths.nshapes
@@ -223,7 +223,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     def _get_slice_and_spline(
         self, idx: int
-    ) -> tuple[tuple[int, ...], Spline]:
+    ) -> Tuple[Tuple[int, ...], Spline]:
         data: np.ndarray = self.layer_paths.data[idx]
         current_slice, data = _split_slice_and_path(data)
         spl = Spline.fit(data, err=0.0)
@@ -385,7 +385,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
-    def create_total_intensity(self, wlayers: list[tuple[weight, Image]]):
+    def create_total_intensity(self, wlayers: List[Tuple[weight, Image]]):
         """Create a total intensity layer from multiple images."""
         weights = [t[0] for t in wlayers]
         imgs = [t[1].data for t in wlayers]
@@ -421,7 +421,7 @@ class FilamentAnalyzer(MagicTemplate):
 
 def _split_slice_and_path(
     data: np.ndarray,
-) -> tuple[tuple[int, ...], np.ndarray]:
+) -> Tuple[Tuple[int, ...], np.ndarray]:
     if data.shape[1] == 2:
         return (), data
     sl: np.ndarray = np.unique(data[:, :-2], axis=0)

@@ -13,7 +13,7 @@ from napari_filaments import _optimizer as _opt
         (_opt.TwosideErfOptimizer, [5.0, 18.0, 1.0, 1.0, 0.2, 0.3]),
     ],
 )
-def test_optimization(optimizer: type[_opt.Optimizer], params):
+def test_optimization(optimizer: "type[_opt.Optimizer]", params):
     opt = optimizer(params)
     x = np.arange(21)
     y = opt.sample(x) + np.random.normal(scale=0.1, size=21)
