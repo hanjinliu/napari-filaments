@@ -12,6 +12,7 @@ from magicclass import (
     magicclass,
     magicmenu,
     magictoolbar,
+    nogui,
     set_design,
     set_options,
     vfield,
@@ -102,10 +103,6 @@ class FilamentAnalyzer(MagicTemplate):
                 def extend_and_fit_right(self): ...
                 def clip_right(self): ...
                 def clip_right_at_inflection(self): ...
-
-        @magicclass(name="Image")
-        class Img(MagicTemplate):
-            def create_total_intensity(self): ...
 
         @magicclass(widget_type="scrollable")
         class Measure(MagicTemplate):
@@ -417,6 +414,12 @@ class FilamentAnalyzer(MagicTemplate):
     def create_macro(self):
         """Create an executable Python script."""
         self.macro.widget.duplicate().show()
+
+    @nogui
+    @do_not_record
+    def get_spline(self, idx: int) -> Spline:
+        _, spl = self._get_slice_and_spline(idx)
+        return spl
 
 
 def _split_slice_and_path(

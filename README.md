@@ -7,19 +7,14 @@
 [![codecov](https://codecov.io/gh/hanjinliu/napari-filaments/branch/main/graph/badge.svg)](https://codecov.io/gh/hanjinliu/napari-filaments)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-filaments)](https://napari-hub.org/plugins/napari-filaments)
 
-A napari plugin for filament analysis
+A napari plugin for filament analysis.
+
+![](resources/fit.gif)
 
 ----------------------------------
 
 This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
 
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/cookiecutter-napari-plugin#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/plugins/index.html
--->
 
 ## Installation
 
