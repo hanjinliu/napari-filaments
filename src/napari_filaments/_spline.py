@@ -308,30 +308,47 @@ class Spline:
         coords = self(np.linspace(start, stop, int(self.length())))
         return self.fit(coords, degree=self.degree, err=0.0)
 
-    def clip_at_inflections(self, image: np.ndarray, **map_kwargs) -> Self:
+    def clip_at_inflections(
+        self,
+        image: np.ndarray,
+        callback: Callable[[_opt.TwosideErfOptimizer, np.ndarray], Any]
+        | None = None,
+        **map_kwargs,
+    ) -> Self:
         prof = self.get_profile(image, **map_kwargs)
         opt = _opt.TwosideErfOptimizer().optimize(prof)
-
+        if callback is not None:
+            callback(opt, prof)
         mu0, mu1 = opt.params[:2]
         tot = prof.size - 1
 
         return self.clip(mu0 / tot, mu1 / tot)
 
-    def clip_at_inflection_left(self, image: np.ndarray, **map_kwargs) -> Self:
+    def clip_at_inflection_left(
+        self,
+        image: np.ndarray,
+        callback: Callable[[_opt.ErfOptimizer, np.ndarray], Any] | None = None,
+        **map_kwargs,
+    ) -> Self:
         prof = self.get_profile(image, **map_kwargs)
         opt = _opt.ErfOptimizer().optimize(prof)
-
+        if callback is not None:
+            callback(opt, prof)
         mu = opt.params[0]
         ndata = prof.size
 
         return self.clip(mu / (ndata - 1), 1.0)
 
     def clip_at_inflection_right(
-        self, image: np.ndarray, **map_kwargs
+        self,
+        image: np.ndarray,
+        callback: Callable[[_opt.ErfOptimizer, np.ndarray], Any] | None = None,
+        **map_kwargs,
     ) -> Self:
         prof = self.get_profile(image, **map_kwargs)
         opt = _opt.ErfOptimizer().optimize(prof)
-
+        if callback is not None:
+            callback(opt, prof)
         mu = opt.params[0]
         ndata = prof.size
 

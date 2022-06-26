@@ -18,9 +18,10 @@ from magicclass import (
     vfield,
 )
 from magicclass.types import Bound, Optional
-from magicclass.widgets import Figure
-from napari.layers import Image
+from magicclass.widgets import Figure, Table
+from napari.layers import Image, Shapes
 
+from . import _optimizer as _opt
 from ._spline import Spline
 from ._types import weight
 
@@ -60,6 +61,7 @@ def batch(f: "Callable[_P, _R]") -> "Callable[_P, _R]":
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
     target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
+    target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
     lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)
     dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
 
@@ -107,11 +109,49 @@ class FilamentAnalyzer(MagicTemplate):
         @magicclass(widget_type="scrollable")
         class Measure(MagicTemplate):
             def measure_length(self): ...
+            def measure_length_all(self): ...
             def plot_profile(self): ...
             def plot_curvature(self): ...
-            plt = field(Figure)
 
     # fmt: on
+
+    @magicclass
+    class Output(MagicTemplate):
+        plt = field(Figure)
+
+        def __post_init__(self):
+            self._xdata = []
+            self._ydata = []
+            self.min_height = 200
+
+        @do_not_record
+        def view_data(self):
+            xlabel = self.plt.ax.get_xlabel() or "x"
+            ylabel = self.plt.ax.get_ylabel() or "y"
+            if isinstance(self._ydata, list):
+                data = {xlabel: self._xdata}
+                for i, y in enumerate(self._ydata):
+                    data[f"{ylabel}-{i}"] = y
+            else:
+                data = {xlabel: self._xdata, ylabel: self._ydata}
+            view_in_table(data, self)
+
+        def _plot(self, x, y, clear=True, **kwargs):
+            if clear:
+                self.plt.cla()
+            self.plt.plot(x, y, **kwargs)
+            self._xdata = x
+            if clear:
+                self._ydata = y
+            else:
+                if isinstance(self._ydata, list):
+                    self._ydata.append(y)
+                else:
+                    self._ydata = [self._ydata, y]
+
+        def _set_labels(self, x: str, y: str):
+            self.plt.xlabel(x)
+            self.plt.ylabel(y)
 
     def __init__(self):
         self.layer_paths = None
@@ -125,6 +165,11 @@ class FilamentAnalyzer(MagicTemplate):
         if len(sel) == 0:
             return self.layer_paths.nshapes - 1
         return sel
+
+    @target_filament.connect
+    def _on_change(self):
+        self.layer_paths = self.target_filament
+        self._last_data = None
 
     @Tools.Layers.wraps
     def open_image(self, path: Path):
@@ -317,7 +362,10 @@ class FilamentAnalyzer(MagicTemplate):
     ):
         """Clip spline at the inflection point at starting edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
-        fit = spl.clip_at_inflection_left(image.data[current_slice])
+        fit = spl.clip_at_inflection_left(
+            image.data[current_slice],
+            callback=self._show_fitting_result,
+        )
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
@@ -330,7 +378,10 @@ class FilamentAnalyzer(MagicTemplate):
     ):
         """Clip spline at the inflection point at ending edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
-        fit = spl.clip_at_inflection_right(image.data[current_slice])
+        fit = spl.clip_at_inflection_right(
+            image.data[current_slice],
+            callback=self._show_fitting_result,
+        )
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Both.wraps
@@ -343,13 +394,32 @@ class FilamentAnalyzer(MagicTemplate):
     ):
         """Clip spline at the inflection points at both ends."""
         current_slice, spl = self._get_slice_and_spline(idx)
-        out = spl.clip_at_inflections(image.data[current_slice])
+        out = spl.clip_at_inflections(
+            image.data[current_slice],
+            callback=self._show_fitting_result,
+        )
         self._update_paths(idx, out, current_slice)
+
+    def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
+        ndata = prof.size
+        xdata = np.arange(ndata)
+        ydata = opt.sample(xdata)
+        self.Output._plot(xdata, prof, color="gray", alpha=0.7, lw=1)
+        self.Output._plot(xdata, ydata, clear=False, color="red", lw=2)
+        self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
     def measure_length(self, idx: Bound[_get_idx]):
         _, spl = self._get_slice_and_spline(idx)
         print(spl.length())
+
+    @Tabs.Measure.wraps
+    def measure_length_all(self):
+        data = []
+        for idx in range(self.layer_paths.nshapes):
+            _, spl = self._get_slice_and_spline(idx)
+            data.append(spl.length())
+        view_in_table({"length": data}, self)
 
     @Tabs.Measure.wraps
     def plot_curvature(
@@ -358,12 +428,11 @@ class FilamentAnalyzer(MagicTemplate):
     ):
         """Plot curvature of filament."""
         _, spl = self._get_slice_and_spline(idx)
-        cv = spl.curvature(np.linspace(0, 1, int(spl.length())))
-        plt = self.Tabs.Measure.plt
-        plt.cla()
-        plt.ylabel("Curvature")
-        plt.plot(cv)
-        plt.show()
+        length = spl.length()
+        x = np.linspace(0, 1, int(spl.length()))
+        cv = spl.curvature(x)
+        self.Output._plot(x * length, cv)
+        self.Output._set_labels("Position (px)", "Curvature")
 
     @Tabs.Measure.wraps
     def plot_profile(
@@ -374,11 +443,10 @@ class FilamentAnalyzer(MagicTemplate):
         """Plot intensity profile."""
         current_slice, spl = self._get_slice_and_spline(idx)
         prof = spl.get_profile(image.data[current_slice])
-        plt = self.Tabs.Measure.plt
-        plt.cla()
-        plt.ylabel("Intensity")
-        plt.plot(prof)
-        plt.show()
+        length = spl.length()
+        x = np.linspace(0, 1, int(length)) * length
+        self.Output._plot(x, prof)
+        self.Output._set_labels("Position (px)", "Intensity")
 
     @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
@@ -431,3 +499,9 @@ def _split_slice_and_path(
     if sl.shape[0] != 1:
         raise ValueError("Spline is not in 2D")
     return tuple(sl.ravel().astype(np.int64)), data[:, -2:]
+
+
+def view_in_table(data: dict, parent: MagicTemplate):
+    table = Table(data)
+    table.native.setParent(parent.native, table.native.windowFlags())
+    table.show()
