@@ -46,7 +46,7 @@ def batch(f: "Callable[_P, _R]") -> "Callable[_P, _R]":
             idx = args[0]
             _args = args[1:]
         else:
-            idx = kwargs["idx"]
+            idx = kwargs.get("idx", -1)
             _args = ()
         if isinstance(idx, (set, list, tuple)):
             for i in idx:
@@ -257,6 +257,8 @@ class FilamentAnalyzer(MagicTemplate):
         idx: Bound[_get_idx] = -1,
         width: Bound[lattice_width] = 9,
     ):
+        if not isinstance(image, Image):
+            raise TypeError("'image' must be a Image layer.")
         self.layer_paths._finish_drawing()
         data: np.ndarray = self.layer_paths.data[idx]
         current_slice, data = _split_slice_and_path(data)
@@ -294,7 +296,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "ext_r.png")
     @batch
-    def extend_right(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
+    def extend_right(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
         """Extend spline at the ending edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
         out = spl.extend_right(dx)
@@ -306,7 +308,7 @@ class FilamentAnalyzer(MagicTemplate):
     def extend_and_fit_left(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
         dx: Bound[dx] = 5.0,
     ):
         """Extend spline and fit to the filament at the starting edge."""
@@ -322,7 +324,7 @@ class FilamentAnalyzer(MagicTemplate):
     def extend_and_fit_right(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
         dx: Bound[dx] = 5.0,
     ):
         """Extend spline and fit to the filament at the ending edge."""
@@ -335,7 +337,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_l.png")
     @batch
-    def clip_left(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
+    def clip_left(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
         """Clip spline at the starting edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
         start = dx / spl.length()
@@ -345,7 +347,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_r.png")
     @batch
-    def clip_right(self, idx: Bound[_get_idx], dx: Bound[dx] = 5.0):
+    def clip_right(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
         """Clip spline at the ending edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
         stop = 1.0 - dx / spl.length()
@@ -358,7 +360,7 @@ class FilamentAnalyzer(MagicTemplate):
     def clip_left_at_inflection(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection point at starting edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -374,7 +376,7 @@ class FilamentAnalyzer(MagicTemplate):
     def clip_right_at_inflection(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection point at ending edge."""
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -390,7 +392,7 @@ class FilamentAnalyzer(MagicTemplate):
     def clip_at_inflections(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection points at both ends."""
         current_slice, spl = self._get_slice_and_spline(idx)
@@ -409,7 +411,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
-    def measure_length(self, idx: Bound[_get_idx]):
+    def measure_length(self, idx: Bound[_get_idx] = -1):
         _, spl = self._get_slice_and_spline(idx)
         print(spl.length())
 
@@ -424,7 +426,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Measure.wraps
     def plot_curvature(
         self,
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
     ):
         """Plot curvature of filament."""
         _, spl = self._get_slice_and_spline(idx)
@@ -438,7 +440,7 @@ class FilamentAnalyzer(MagicTemplate):
     def plot_profile(
         self,
         image: Bound[target_image],
-        idx: Bound[_get_idx],
+        idx: Bound[_get_idx] = -1,
     ):
         """Plot intensity profile."""
         current_slice, spl = self._get_slice_and_spline(idx)
