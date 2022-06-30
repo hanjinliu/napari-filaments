@@ -1,7 +1,6 @@
 import re
-from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, List, Set, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, List, Set, Tuple, Union
 
 import numpy as np
 from magicclass import (
@@ -28,42 +27,16 @@ from ._types import weight
 if TYPE_CHECKING:
     from magicclass.fields import MagicValueField
     from magicgui.widgets import ComboBox
-    from typing_extensions import ParamSpec
-
-    _P = ParamSpec("_P")
-    _R = TypeVar("_R")
 
 ICON_DIR = Path(__file__).parent / "_icon"
 ICON_KWARGS = dict(text="", min_width=42, min_height=42)
-
-
-def batch(f: "Callable[_P, _R]") -> "Callable[_P, _R]":
-    """Create a batch processing using `idx` argument."""
-
-    @wraps(f)
-    def _f(self, *args, **kwargs):
-        if args:
-            idx = args[0]
-            _args = args[1:]
-        else:
-            idx = kwargs.get("idx", -1)
-            _args = ()
-        if isinstance(idx, (set, list, tuple)):
-            for i in idx:
-                f(self, i, *_args, **kwargs)
-            return
-        f(self, idx, *_args, **kwargs)
-        return
-
-    return _f
+TARGET_IMG_LAYERS = "target-image-layer"
 
 
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
-    target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
     target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
-    lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)
-    dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
+    target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
 
     # fmt: off
     @magictoolbar
@@ -73,6 +46,11 @@ class FilamentAnalyzer(MagicTemplate):
             def open_image(self): ...
             def add_filament_layer(self): ...
             def create_total_intensity(self): ...
+
+        @magicmenu
+        class Parameters(MagicTemplate):
+            lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
+            dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
 
         @magicmenu
         class Others(MagicTemplate):
@@ -154,7 +132,8 @@ class FilamentAnalyzer(MagicTemplate):
             self.plt.ylabel(y)
 
     def __init__(self):
-        self.layer_paths = None
+        self.layer_paths: Shapes = None
+        self._last_target_filament: Shapes = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._last_data: np.ndarray = None
 
@@ -168,8 +147,17 @@ class FilamentAnalyzer(MagicTemplate):
 
     @target_filament.connect
     def _on_change(self):
+        if self._last_target_filament in self.parent_viewer.layers:
+            _toggle_target_images(self._last_target_filament, False)
+
+        elif self._last_target_filament is not None:
+            self._last_target_filament = None
+
         self.layer_paths = self.target_filament
+        self._last_target_filament = self.target_filament
         self._last_data = None
+        _toggle_target_images(self._last_target_filament, True)
+        self.parent_viewer.layers.selection = {self.target_filament}
 
     @Tools.Layers.wraps
     def open_image(self, path: Path):
@@ -185,20 +173,24 @@ class FilamentAnalyzer(MagicTemplate):
         if "C" in axes:
             ic = axes.find("C")
             nchn = img.shape[ic]
-            self.parent_viewer.add_image(
+            img_layers: List[Image] = self.parent_viewer.add_image(
                 img,
                 channel_axis=ic,
                 name=[f"[C{i}] {path.stem}" for i in range(nchn)],
             )
         else:
-            self.parent_viewer.add_image(img, name=path.stem)
+            _layer = self.parent_viewer.add_image(img, name=path.stem)
+            img_layers = [_layer]
+
         axis_labels = [c for c in axes if c != "C"]
         self.add_filament_layer(self.parent_viewer.layers[-1], path.stem)
+        self.layer_paths.metadata[TARGET_IMG_LAYERS] = img_layers
         ndim = self.parent_viewer.dims.ndim
         if ndim == len(axis_labels):
             self.parent_viewer.dims.set_axis_label(
                 list(range(ndim)), axis_labels
             )
+        self.target_filament = self.layer_paths
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
@@ -221,6 +213,8 @@ class FilamentAnalyzer(MagicTemplate):
         @self.layer_paths.events.set_data.connect
         def _(e):
             self._last_data = None
+
+        return self.layer_paths
 
     def _update_paths(
         self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
@@ -250,20 +244,21 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Both.wraps
     @bind_key("T")
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "fit.png")
-    @batch
     def fit_current(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
-        width: Bound[lattice_width] = 9,
+        width: Bound[Tools.Parameters.lattice_width] = 9,
     ):
         if not isinstance(image, Image):
             raise TypeError("'image' must be a Image layer.")
         self.layer_paths._finish_drawing()
-        data: np.ndarray = self.layer_paths.data[idx]
-        current_slice, data = _split_slice_and_path(data)
-        fit = self._fit_i_2d(width, image.data[current_slice], data)
-        self._update_paths(idx, fit, current_slice)
+        indices = _arrange_selection(idx)
+        for i in indices:
+            data: np.ndarray = self.layer_paths.data[i]
+            current_slice, data = _split_slice_and_path(data)
+            fit = self._fit_i_2d(width, image.data[current_slice], data)
+            self._update_paths(i, fit, current_slice)
 
     def _get_slice_and_spline(
         self, idx: int
@@ -286,32 +281,36 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "ext_l.png")
-    @batch
-    def extend_left(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
+    def extend_left(
+        self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
+    ):
         """Extend spline at the starting edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         out = spl.extend_left(dx)
         self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "ext_r.png")
-    @batch
-    def extend_right(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
+    def extend_right(
+        self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
+    ):
         """Extend spline at the ending edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         out = spl.extend_right(dx)
         self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @batch
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "extfit_l.png")
     def extend_and_fit_left(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
-        dx: Bound[dx] = 5.0,
+        dx: Bound[Tools.Parameters.dx] = 5.0,
     ):
         """Extend spline and fit to the filament at the starting edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         fit = spl.extend_filament_left(
             image.data[current_slice], dx, width=11, spline_error=3e-2
@@ -320,14 +319,14 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "extfit_r.png")
-    @batch
     def extend_and_fit_right(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
-        dx: Bound[dx] = 5.0,
+        dx: Bound[Tools.Parameters.dx] = 5.0,
     ):
         """Extend spline and fit to the filament at the ending edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         fit = spl.extend_filament_right(
             image.data[current_slice], dx, width=11, spline_error=3e-2
@@ -336,9 +335,11 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_l.png")
-    @batch
-    def clip_left(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
+    def clip_left(
+        self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
+    ):
         """Clip spline at the starting edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         start = dx / spl.length()
         fit = spl.clip(start, 1.0)
@@ -346,9 +347,11 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_r.png")
-    @batch
-    def clip_right(self, idx: Bound[_get_idx] = -1, dx: Bound[dx] = 5.0):
+    def clip_right(
+        self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
+    ):
         """Clip spline at the ending edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         stop = 1.0 - dx / spl.length()
         fit = spl.clip(0.0, stop)
@@ -356,13 +359,13 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf_l.png")
-    @batch
     def clip_left_at_inflection(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection point at starting edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         fit = spl.clip_at_inflection_left(
             image.data[current_slice],
@@ -372,13 +375,13 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf_r.png")
-    @batch
     def clip_right_at_inflection(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection point at ending edge."""
+        idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         fit = spl.clip_at_inflection_right(
             image.data[current_slice],
@@ -388,19 +391,20 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf2.png")
-    @batch
     def clip_at_inflections(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
     ):
         """Clip spline at the inflection points at both ends."""
-        current_slice, spl = self._get_slice_and_spline(idx)
-        out = spl.clip_at_inflections(
-            image.data[current_slice],
-            callback=self._show_fitting_result,
-        )
-        self._update_paths(idx, out, current_slice)
+        indices = _arrange_selection(idx)
+        for i in indices:
+            current_slice, spl = self._get_slice_and_spline(i)
+            out = spl.clip_at_inflections(
+                image.data[current_slice],
+                callback=self._show_fitting_result,
+            )
+            self._update_paths(i, out, current_slice)
 
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
         ndata = prof.size
@@ -507,3 +511,25 @@ def view_in_table(data: dict, parent: MagicTemplate):
     table = Table(data)
     table.native.setParent(parent.native, table.native.windowFlags())
     table.show()
+
+
+def _toggle_target_images(shapes: Shapes, visible: bool):
+    """Set target images to visible or invisible."""
+    img_layers: List[Image] = shapes.metadata.get(TARGET_IMG_LAYERS, [])
+    for img_layer in img_layers:
+        img_layer.visible = visible
+
+
+def _assert_single_selection(idx: Union[int, Set[int]]) -> int:
+    if isinstance(idx, set):
+        if len(idx) != 1:
+            raise ValueError("Multiple selection")
+        return idx.pop()
+    return idx
+
+
+def _arrange_selection(idx: Union[int, Set[int]]) -> List[int]:
+    if isinstance(idx, int):
+        return [idx]
+    else:
+        return sorted(list(idx), reverse=True)
