@@ -4,6 +4,7 @@ from abc import ABC, abstractstaticmethod
 from typing import TYPE_CHECKING, NamedTuple, Tuple, Union
 
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import curve_fit
 from scipy.special import erf
 
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 
 
 sq2 = np.sqrt(2)
-Bounds = Tuple[Union[np.ndarray, float], Union[np.ndarray, float]]
+Bounds = Tuple[Union[ArrayLike, float], Union[ArrayLike, float]]
 
 
 class Optimizer(ABC):
@@ -95,13 +96,16 @@ class GaussianOptimizer(Optimizer):
         return a * np.exp(-((xdata - mu) ** 2) / (2 * sg**2)) + b
 
     @staticmethod
-    def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:
-        bounds = (
-            [0.0, 0.0, 0.0, -np.inf],
-            [ydata.size, np.inf, np.inf, np.inf],
-        )
+    def initialize(ydata: np.ndarray) -> tuple[ArrayLike, Bounds]:
+        ymin = np.min(ydata)
         argmax = np.argmax(ydata)
-        params = np.array([argmax, 2.0, ydata[argmax], 0.0])
+        ymax = ydata[argmax]
+        dy = ymax - ymin
+        bounds = (
+            [0.0, 0.0, 0.0, ymin],
+            [ydata.size, np.inf, dy * 1.1, ymax],
+        )
+        params = [argmax, 2.0, dy, ymin + dy * 0.05]
         return params, bounds
 
 
@@ -124,14 +128,16 @@ class ErfOptimizer(Optimizer):
         return (a - b) / 2 * (1 + erf(x0)) + b
 
     @staticmethod
-    def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:
+    def initialize(ydata: np.ndarray) -> tuple[ArrayLike, Bounds]:
+        ymin = np.min(ydata)
+        ymax = np.max(ydata)
         ndata = ydata.size
         a = np.mean(ydata[-3:])
         b = np.mean(ydata[:3])
-        params = np.array([ndata, 2.0, a, b])
+        params = [ndata, 2.0, a, b]
         bounds = (
-            [0, 0, -np.inf, -np.inf],
-            [ndata, np.inf, np.inf, np.inf],
+            [0.0, 0.0, 0.0, ymin],
+            [ndata, np.inf, ymax - ymin, ymax],
         )
         return params, bounds
 
@@ -166,22 +172,16 @@ class TwosideErfOptimizer(Optimizer):
         )
 
     @staticmethod
-    def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:
+    def initialize(ydata: np.ndarray) -> tuple[ArrayLike, Bounds]:
         ndata = ydata.size
         xc = ndata // 2
-        params = np.array(
-            [
-                2,
-                ndata - 2,
-                2.0,
-                2.0,
-                np.max(ydata),
-                np.min(ydata[:xc]),
-                np.min(ydata[xc:]),
-            ]
-        )
+        ymin_l = np.min(ydata[:xc])
+        ymin_r = np.min(ydata[xc:])
+        ymin = min(ymin_l, ymin_r)
+        ymax = np.max(ydata)
+        params = [2.0, ndata - 2, 2.0, 2.0, ymax, ymin_l, ymin_r]
         bounds = (
-            [0.0, 0, 0.0, 0.0, -np.inf, -np.inf, -np.inf],
-            [ndata, ndata, np.inf, np.inf, np.inf, np.inf, np.inf],
+            [0.0, 0.0, 0.0, 0.0, 0.0, ymin, ymin],
+            [ndata, ndata, np.inf, np.inf, ymax - ymin, ymax, ymax],
         )
         return params, bounds

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 ICON_DIR = Path(__file__).parent / "_icon"
 ICON_KWARGS = dict(text="", min_width=42, min_height=42)
 TARGET_IMG_LAYERS = "target-image-layer"
+ROI_ID = "ROI-ID"
 
 
 @magicclass
@@ -51,7 +52,7 @@ class FilamentAnalyzer(MagicTemplate):
         class Parameters(MagicTemplate):
             lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
             dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
-            sigma_range = vfield((0.5, 3), record=False)
+            sigma_range = vfield((0.5, 3.0), record=False)
 
         @magicmenu
         class Others(MagicTemplate):
@@ -203,19 +204,31 @@ class FilamentAnalyzer(MagicTemplate):
             name = target_image.name
             if mactched := re.findall(r"\[.*\](.+)", name):
                 name = mactched[0]
-        self.layer_paths = self.parent_viewer.add_shapes(
+        layer_paths = self.parent_viewer.add_shapes(
             ndim=target_image.ndim,
             edge_color=self._color_default,
             name=f"[F] {name}",
             edge_width=0.5,
+            properties={ROI_ID: 0},
+            text="[{" + ROI_ID + "}]",
         )
-        self.layer_paths.mode = "add_path"
+        layer_paths.mode = "add_path"
 
-        @self.layer_paths.events.set_data.connect
-        def _(e):
+        @layer_paths.events.set_data.connect
+        def _on_data_changed(e):
             self._last_data = None
+            props = layer_paths.current_properties
+            all_ids = layer_paths.features[ROI_ID]
+            if all_ids.size > 0:
+                next_id = np.max(all_ids) + 1
+            else:
+                next_id = 0
+            props[ROI_ID] = next_id
+            layer_paths.current_properties = props
 
-        return self.layer_paths
+        layer_paths.current_properties = {ROI_ID: 0}
+        self.layer_paths = layer_paths
+        return layer_paths
 
     def _update_paths(
         self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
@@ -228,6 +241,10 @@ class FilamentAnalyzer(MagicTemplate):
             sampled = np.concatenate([sl, sampled], axis=1)
 
         hist = self.layer_paths.data[idx]
+        id = self.layer_paths.features[ROI_ID][idx]
+        props = self.layer_paths.current_properties
+        props.update({ROI_ID: id})
+        self.layer_paths.current_properties = props
         self.layer_paths.add(sampled, shape_type="path")
         self.layer_paths.selected_data = {idx}
         self.layer_paths.remove_selected()
