@@ -210,7 +210,7 @@ class FilamentAnalyzer(MagicTemplate):
             name=f"[F] {name}",
             edge_width=0.5,
             properties={ROI_ID: 0},
-            text=dict(text="[{" + ROI_ID + "}]", color="white", size=8),
+            text=dict(string="[{" + ROI_ID + "}]", color="white", size=8),
         )
         layer_paths.mode = "add_path"
 
