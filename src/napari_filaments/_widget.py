@@ -51,6 +51,7 @@ class FilamentAnalyzer(MagicTemplate):
         class Parameters(MagicTemplate):
             lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
             dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
+            sigma_range = vfield((0.5, 3), record=False)
 
         @magicmenu
         class Others(MagicTemplate):
@@ -407,11 +408,23 @@ class FilamentAnalyzer(MagicTemplate):
             self._update_paths(i, out, current_slice)
 
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
+        """Callback function for error function fitting"""
+        sg_min, sg_max = self.Tools.Parameters.sigma_range
+        if isinstance(opt, (_opt.GaussianOptimizer, _opt.ErfOptimizer)):
+            valid = sg_min <= opt.params.sg <= sg_max
+        elif isinstance(opt, _opt.TwosideErfOptimizer):
+            valid0 = sg_min <= opt.params.sg0 <= sg_max
+            valid1 = sg_min <= opt.params.sg1 <= sg_max
+            valid = valid0 and valid1
+        else:
+            raise NotImplementedError
         ndata = prof.size
         xdata = np.arange(ndata)
         ydata = opt.sample(xdata)
         self.Output._plot(xdata, prof, color="gray", alpha=0.7, lw=1)
         self.Output._plot(xdata, ydata, clear=False, color="red", lw=2)
+        if not valid:
+            self.Output.plt.text(0, 0, "Sigma out of range.", color="crimson")
         self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
@@ -472,7 +485,7 @@ class FilamentAnalyzer(MagicTemplate):
             new_name = f"[Total] {outs.pop()}"
         else:
             new_name = f"[Total] {outs.pop()} etc."
-        self.parent_viewer.add_image(tot, name=new_name)
+        self.parent_viewer.add_image(tot, name=new_name, visible=False)
 
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "del.png")
@@ -487,7 +500,13 @@ class FilamentAnalyzer(MagicTemplate):
     @do_not_record
     def create_macro(self):
         """Create an executable Python script."""
-        self.macro.widget.duplicate().show()
+        import macrokit as mk
+
+        new = self.macro.widget.duplicate()
+        v = mk.Expr("getattr", [mk.symbol(self), "parent_viewer"])
+        new.value = self.macro.format([(mk.symbol(self.parent_viewer), v)])
+        new.show()
+        return None
 
     @nogui
     @do_not_record

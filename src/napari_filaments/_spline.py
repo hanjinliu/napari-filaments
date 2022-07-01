@@ -319,7 +319,7 @@ class Spline:
         opt = _opt.TwosideErfOptimizer().optimize(prof)
         if callback is not None:
             callback(opt, prof)
-        mu0, mu1 = opt.params[:2]
+        mu0, mu1 = opt.params.mu0, opt.params.mu1
         tot = prof.size - 1
 
         return self.clip(mu0 / tot, mu1 / tot)
@@ -331,11 +331,12 @@ class Spline:
         **map_kwargs,
     ) -> Self:
         prof = self.get_profile(image, **map_kwargs)
-        opt = _opt.ErfOptimizer().optimize(prof)
+        ndata = prof.size
+        border = (ndata + 1) // 2
+        opt = _opt.ErfOptimizer().optimize(prof[:border])
         if callback is not None:
             callback(opt, prof)
-        mu = opt.params[0]
-        ndata = prof.size
+        mu = opt.params.mu
 
         return self.clip(mu / (ndata - 1), 1.0)
 
@@ -346,10 +347,11 @@ class Spline:
         **map_kwargs,
     ) -> Self:
         prof = self.get_profile(image, **map_kwargs)
-        opt = _opt.ErfOptimizer().optimize(prof)
+        ndata = prof.size
+        border = ndata // 2
+        opt = _opt.ErfOptimizer().optimize(prof[border:])
         if callback is not None:
             callback(opt, prof)
-        mu = opt.params[0]
-        ndata = prof.size
+        mu = opt.params.mu + border
 
         return self.clip(0.0, mu / (ndata - 1))

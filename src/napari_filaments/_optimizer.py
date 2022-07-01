@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractstaticmethod
-from typing import TYPE_CHECKING, Tuple, Union
+from typing import TYPE_CHECKING, NamedTuple, Tuple, Union
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -16,12 +16,27 @@ Bounds = Tuple[Union[np.ndarray, float], Union[np.ndarray, float]]
 
 
 class Optimizer(ABC):
+    @abstractstaticmethod
+    class Parameters(NamedTuple):
+        pass
+
     def __init__(
         self, params=None, cov=None, bounds: Bounds = (-np.inf, np.inf)
     ):
         self.params = params
         self.cov = cov
         self.bounds = bounds
+
+    @property
+    def params(self) -> Parameters:
+        return self._params
+
+    @params.setter
+    def params(self, val):
+        if val is None:
+            self._params = None
+        else:
+            self._params = self.Parameters(*val)
 
     def optimize(self, ydata: np.ndarray) -> Self:
         """Fit data to the model function and return a new instance."""
@@ -48,7 +63,7 @@ class Optimizer(ABC):
         return self.model(xdata, *self.params)
 
     @abstractstaticmethod
-    def model(xdata: np.ndarray, *args):
+    def model(xdata: np.ndarray, *args: Parameters):
         """Model function."""
 
     @abstractstaticmethod
@@ -63,6 +78,18 @@ class Optimizer(ABC):
 
 
 class GaussianOptimizer(Optimizer):
+    class Parameters(NamedTuple):
+        mu: float
+        sg: float
+        a: float
+        b: float
+
+    if TYPE_CHECKING:
+
+        @property
+        def params(self) -> Parameters:
+            ...
+
     @staticmethod
     def model(xdata: np.ndarray, mu, sg, a, b):
         return a * np.exp(-((xdata - mu) ** 2) / (2 * sg**2)) + b
@@ -79,6 +106,18 @@ class GaussianOptimizer(Optimizer):
 
 
 class ErfOptimizer(Optimizer):
+    class Parameters(NamedTuple):
+        mu: float
+        sg: float
+        a: float
+        b: float
+
+    if TYPE_CHECKING:
+
+        @property
+        def params(self) -> Parameters:
+            ...
+
     @staticmethod
     def model(xdata: np.ndarray, mu, sg, a, b):
         x0 = (xdata - mu) / sg / sq2
@@ -105,10 +144,25 @@ class TwosideErfOptimizer(Optimizer):
           mu1            mu2
     """
 
+    class Parameters(NamedTuple):
+        mu0: float
+        mu1: float
+        sg0: float
+        sg1: float
+        a: float
+        b0: float
+        b1: float
+
+    if TYPE_CHECKING:
+
+        @property
+        def params(self) -> Parameters:
+            ...
+
     @staticmethod
-    def model(xdata: np.ndarray, mu0, mu1, sg, a, b0, b1):
-        return ErfOptimizer.model(xdata, mu0, sg, a, b0) - ErfOptimizer.model(
-            xdata, mu1, sg, a - b1, 0
+    def model(xdata: np.ndarray, mu0, mu1, sg0, sg1, a, b0, b1):
+        return ErfOptimizer.model(xdata, mu0, sg0, a, b0) - ErfOptimizer.model(
+            xdata, mu1, sg1, a - b1, 0
         )
 
     @staticmethod
@@ -120,13 +174,14 @@ class TwosideErfOptimizer(Optimizer):
                 2,
                 ndata - 2,
                 2.0,
+                2.0,
                 np.max(ydata),
                 np.min(ydata[:xc]),
                 np.min(ydata[xc:]),
             ]
         )
         bounds = (
-            [0.0, 0, 0.0, -np.inf, -np.inf, -np.inf],
-            [ndata, ndata, np.inf, np.inf, np.inf, np.inf],
+            [0.0, 0, 0.0, 0.0, -np.inf, -np.inf, -np.inf],
+            [ndata, ndata, np.inf, np.inf, np.inf, np.inf, np.inf],
         )
         return params, bounds
