@@ -42,15 +42,16 @@ class Optimizer(ABC):
     def optimize(self, ydata: np.ndarray) -> Self:
         """Fit data to the model function and return a new instance."""
         xdata = np.arange(ydata.size)
-        if self.params is None or self.bounds:
+        if self.params is None:
             params, bounds = self.initialize(ydata)
-        if self.params is not None:
+        else:
             params = self.params
-        if self.bounds is not None:
             bounds = self.bounds
+
         params, cov = curve_fit(
             self.model, xdata, ydata, params, bounds=bounds
         )
+
         return self.__class__(params, cov, bounds)
 
     @classmethod

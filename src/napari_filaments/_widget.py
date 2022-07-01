@@ -17,6 +17,7 @@ from magicclass import (
     vfield,
 )
 from magicclass.types import Bound, Optional
+from magicclass.utils import thread_worker
 from magicclass.widgets import Figure, Table
 from napari.layers import Image, Shapes
 
@@ -52,11 +53,12 @@ class FilamentAnalyzer(MagicTemplate):
         class Parameters(MagicTemplate):
             lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
             dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
-            sigma_range = vfield((0.5, 3.0), record=False)
+            sigma_range = vfield((0.5, 5.0), record=False)
 
         @magicmenu
         class Others(MagicTemplate):
             def create_macro(self): ...
+            def send_widget_to_viewer(self): ...
 
     @magicclass(widget_type="tabbed")
     class Tabs(MagicTemplate):
@@ -162,6 +164,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.parent_viewer.layers.selection = {self.target_filament}
 
     @Tools.Layers.wraps
+    @thread_worker
     def open_image(self, path: Path):
         """Open a TIF."""
         path = Path(path)
@@ -172,27 +175,31 @@ class FilamentAnalyzer(MagicTemplate):
             axes = getattr(series0, "axes", "")
             img: np.ndarray = tif.asarray()
 
-        if "C" in axes:
-            ic = axes.find("C")
-            nchn = img.shape[ic]
-            img_layers: List[Image] = self.parent_viewer.add_image(
-                img,
-                channel_axis=ic,
-                name=[f"[C{i}] {path.stem}" for i in range(nchn)],
-            )
-        else:
-            _layer = self.parent_viewer.add_image(img, name=path.stem)
-            img_layers = [_layer]
+        @thread_worker.to_callback
+        def _on_return():
+            if "C" in axes:
+                ic = axes.find("C")
+                nchn = img.shape[ic]
+                img_layers: List[Image] = self.parent_viewer.add_image(
+                    img,
+                    channel_axis=ic,
+                    name=[f"[C{i}] {path.stem}" for i in range(nchn)],
+                )
+            else:
+                _layer = self.parent_viewer.add_image(img, name=path.stem)
+                img_layers = [_layer]
 
-        axis_labels = [c for c in axes if c != "C"]
-        self.add_filament_layer(self.parent_viewer.layers[-1], path.stem)
-        self.layer_paths.metadata[TARGET_IMG_LAYERS] = img_layers
-        ndim = self.parent_viewer.dims.ndim
-        if ndim == len(axis_labels):
-            self.parent_viewer.dims.set_axis_label(
-                list(range(ndim)), axis_labels
-            )
-        self.target_filament = self.layer_paths
+            axis_labels = [c for c in axes if c != "C"]
+            self.add_filament_layer(self.parent_viewer.layers[-1], path.stem)
+            self.layer_paths.metadata[TARGET_IMG_LAYERS] = img_layers
+            ndim = self.parent_viewer.dims.ndim
+            if ndim == len(axis_labels):
+                self.parent_viewer.dims.set_axis_label(
+                    list(range(ndim)), axis_labels
+                )
+            self.target_filament = self.layer_paths
+
+        return _on_return
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
@@ -223,7 +230,12 @@ class FilamentAnalyzer(MagicTemplate):
             props = layer_paths.current_properties
             all_ids = layer_paths.features[ROI_ID]
             if all_ids.size > 0:
-                next_id = np.max(all_ids) + 1
+                id_max = np.max(all_ids)
+                if id_max >= layer_paths.nshapes:
+                    features = layer_paths.features
+                    features[ROI_ID] = np.argsort(all_ids)
+                    layer_paths.features = features
+                next_id = id_max + 1
             else:
                 next_id = 0
             props[ROI_ID] = next_id
@@ -238,6 +250,8 @@ class FilamentAnalyzer(MagicTemplate):
     ):
         if idx < 0:
             idx += self.layer_paths.nshapes
+        if spl.length() > 1000:
+            raise ValueError("Spline is too long.")
         sampled = spl.sample(interval=1.0)
         if current_slice:
             sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
@@ -257,7 +271,7 @@ class FilamentAnalyzer(MagicTemplate):
         return rough.fit_filament(img, width=7, spline_error=3e-2)
 
     @Tabs.Spline.Both.wraps
-    @bind_key("T")
+    @bind_key("F1")
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "fit.png")
     def fit_current(
         self,
@@ -418,6 +432,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf2.png")
+    @bind_key("F2")
     def clip_at_inflections(
         self,
         image: Bound[target_image],
@@ -535,6 +550,11 @@ class FilamentAnalyzer(MagicTemplate):
         new.value = self.macro.format([(mk.symbol(self.parent_viewer), v)])
         new.show()
         return None
+
+    @Tools.Others.wraps
+    @do_not_record
+    def send_widget_to_viewer(self):
+        self.parent_viewer.update_console({"ui": self})
 
     @nogui
     @do_not_record
