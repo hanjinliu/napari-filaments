@@ -134,7 +134,7 @@ class ErfOptimizer(Optimizer):
         ndata = ydata.size
         a = np.mean(ydata[-3:])
         b = np.mean(ydata[:3])
-        params = [ndata, 2.0, a, b]
+        params = [ndata / 2, 2.0, abs(a - b), b]
         bounds = (
             [0.0, 0.0, 0.0, ymin],
             [ndata, np.inf, ymax - ymin, ymax],
@@ -179,7 +179,7 @@ class TwosideErfOptimizer(Optimizer):
         ymin_r = np.min(ydata[xc:])
         ymin = min(ymin_l, ymin_r)
         ymax = np.max(ydata)
-        params = [2.0, ndata - 2, 2.0, 2.0, ymax, ymin_l, ymin_r]
+        params = [2.0, ndata - 2, 2.0, 2.0, ymax - ymin, ymin_l, ymin_r]
         bounds = (
             [0.0, 0.0, 0.0, 0.0, 0.0, ymin, ymin],
             [ndata, ndata, np.inf, np.inf, ymax - ymin, ymax, ymax],

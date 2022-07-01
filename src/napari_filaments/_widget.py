@@ -210,13 +210,16 @@ class FilamentAnalyzer(MagicTemplate):
             name=f"[F] {name}",
             edge_width=0.5,
             properties={ROI_ID: 0},
-            text="[{" + ROI_ID + "}]",
+            text=dict(text="[{" + ROI_ID + "}]", color="white", size=8),
         )
         layer_paths.mode = "add_path"
 
         @layer_paths.events.set_data.connect
         def _on_data_changed(e):
+            # delete undo history
             self._last_data = None
+
+            # update current filament ROI ID
             props = layer_paths.current_properties
             all_ids = layer_paths.features[ROI_ID]
             if all_ids.size > 0:
@@ -241,13 +244,7 @@ class FilamentAnalyzer(MagicTemplate):
             sampled = np.concatenate([sl, sampled], axis=1)
 
         hist = self.layer_paths.data[idx]
-        id = self.layer_paths.features[ROI_ID][idx]
-        props = self.layer_paths.current_properties
-        props.update({ROI_ID: id})
-        self.layer_paths.current_properties = props
-        self.layer_paths.add(sampled, shape_type="path")
-        self.layer_paths.selected_data = {idx}
-        self.layer_paths.remove_selected()
+        self._replace_data(idx, sampled)
         self._last_data = hist
 
     def _fit_i_2d(self, width, img, coords) -> Spline:
@@ -268,6 +265,7 @@ class FilamentAnalyzer(MagicTemplate):
         idx: Bound[_get_idx] = -1,
         width: Bound[Tools.Parameters.lattice_width] = 9,
     ):
+        """Fit current spline to the image."""
         if not isinstance(image, Image):
             raise TypeError("'image' must be a Image layer.")
         self.layer_paths._finish_drawing()
@@ -289,10 +287,19 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "undo.png")
     def undo_spline(self):
+        """Undo the last spline fit."""
         if self._last_data is None:
             return
         idx = self.layer_paths.nshapes - 1
-        self.layer_paths.add(self._last_data, shape_type="path")
+        self._replace_data(idx, self._last_data)
+
+    def _replace_data(self, idx: int, new_data: np.ndarray):
+        """Replace the idx-th data to the new one."""
+        id = self.layer_paths.features[ROI_ID][idx]
+        props = self.layer_paths.current_properties
+        props.update({ROI_ID: id})
+        self.layer_paths.current_properties = props
+        self.layer_paths.add(new_data, shape_type="path")
         self.layer_paths.selected_data = {idx}
         self.layer_paths.remove_selected()
         self._last_data = None
@@ -441,7 +448,9 @@ class FilamentAnalyzer(MagicTemplate):
         self.Output._plot(xdata, prof, color="gray", alpha=0.7, lw=1)
         self.Output._plot(xdata, ydata, clear=False, color="red", lw=2)
         if not valid:
-            self.Output.plt.text(0, 0, "Sigma out of range.", color="crimson")
+            self.Output.plt.text(
+                0, np.min(ydata), "Sigma out of range.", color="crimson"
+            )
         self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
