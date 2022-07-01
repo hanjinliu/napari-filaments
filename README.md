@@ -9,7 +9,13 @@
 
 A napari plugin for filament analysis.
 
-![](resources/fit.gif)
+![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fit.gif)
+
+Currently implemented functions
+
+- Fit paths to filaments in an image as a 2-D spline curve.
+- Clip paths by fitting using error function.
+- Sub-pixel measurement of filament length.
 
 ----------------------------------
 
