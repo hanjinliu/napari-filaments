@@ -47,7 +47,10 @@ class Spline:
         return self(u)
 
     @classmethod
-    def fit(cls, points: np.ndarray, degree: int = 3, err: float = 1e-2):
+    def fit(
+        cls, points: np.ndarray, degree: int = 3, err: float = 1e-2
+    ) -> Self:
+        """Construct a Spline object by fitting to points."""
         points = np.asarray(points)
         npoints = points.shape[0]
         weights = np.ones(npoints)

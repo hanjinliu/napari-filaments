@@ -281,6 +281,8 @@ class FilamentAnalyzer(MagicTemplate):
     ) -> Tuple[Tuple[int, ...], Spline]:
         data: np.ndarray = self.layer_paths.data[idx]
         current_slice, data = _split_slice_and_path(data)
+        if data.shape[0] < 4:
+            data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
         spl = Spline.fit(data, err=0.0)
         return current_slice, spl
 
