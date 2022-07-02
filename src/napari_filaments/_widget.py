@@ -19,7 +19,7 @@ from magicclass import (
 from magicclass.ext.vispy import VispyImageCanvas
 from magicclass.types import Bound, OneOf, Optional, SomeOf
 from magicclass.utils import thread_worker
-from magicclass.widgets import Figure, Table
+from magicclass.widgets import Figure, Separator, Table
 from napari.layers import Image, Shapes
 
 from . import _optimizer as _opt
@@ -34,6 +34,7 @@ ICON_DIR = Path(__file__).parent / "_icon"
 ICON_KWARGS = dict(text="", min_width=42, min_height=42)
 TARGET_IMG_LAYERS = "target-image-layer"
 ROI_ID = "ROI-ID"
+SOURCE = "source"
 
 
 @magicclass
@@ -47,8 +48,13 @@ class FilamentAnalyzer(MagicTemplate):
         @magicmenu
         class Layers(MagicTemplate):
             def open_image(self): ...
+            def open_filament_layer(self): ...
             def add_filament_layer(self): ...
+            sep0 = field(Separator)
+            def save_filament_layer(self): ...
+            sep1 = field(Separator)
             def create_total_intensity(self): ...
+            # def export_roi(self): ...
 
         @magicmenu
         class Parameters(MagicTemplate):
@@ -186,13 +192,13 @@ class FilamentAnalyzer(MagicTemplate):
                     img,
                     channel_axis=ic,
                     name=[f"[C{i}] {path.stem}" for i in range(nchn)],
-                    metadata={"axes": axes[:ic] + axes[ic_:]},
+                    metadata={"axes": axes[:ic] + axes[ic_:], SOURCE: path},
                 )
             else:
                 _layer = self.parent_viewer.add_image(
                     img,
                     name=path.stem,
-                    metadata={"axes": axes},
+                    metadata={"axes": axes, SOURCE: path},
                 )
                 img_layers = [_layer]
 
@@ -207,6 +213,36 @@ class FilamentAnalyzer(MagicTemplate):
             self.target_filament = self.layer_paths
 
         return _on_return
+
+    @Tools.Layers.wraps
+    @set_options(path={"mode": "d"})
+    def open_filament_layer(self, path: Path):
+        import pandas as pd
+
+        path = Path(path)
+
+        all_csv: List[np.ndarray] = []
+        for p in path.glob("*.csv"):
+            df = pd.read_csv(p)
+            all_csv.append(df.values)
+        n_csv = len(all_csv)
+
+        layer_paths = self.parent_viewer.add_shapes(
+            all_csv,
+            edge_color=self._color_default,
+            name=f"[F] {path.stem}",
+            shape_type="path",
+            edge_width=0.5,
+            properties={ROI_ID: list(range(n_csv))},
+            text=dict(string="[{" + ROI_ID + "}]", color="white", size=8),
+        )
+
+        self._set_filament_layer(layer_paths)
+        layer_paths.current_properties = {ROI_ID: n_csv}
+        self.layer_paths.metadata[TARGET_IMG_LAYERS] = list(
+            filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
+        )
+        self.target_filament = self.layer_paths
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
@@ -226,6 +262,9 @@ class FilamentAnalyzer(MagicTemplate):
             properties={ROI_ID: 0},
             text=dict(string="[{" + ROI_ID + "}]", color="white", size=8),
         )
+        return self._set_filament_layer(layer_paths)
+
+    def _set_filament_layer(self, layer_paths: Shapes):
         layer_paths.mode = "add_path"
 
         @layer_paths.events.set_data.connect
@@ -251,6 +290,48 @@ class FilamentAnalyzer(MagicTemplate):
         layer_paths.current_properties = {ROI_ID: 0}
         self.layer_paths = layer_paths
         return layer_paths
+
+    @Tools.Layers.wraps
+    @set_options(path={"mode": "w"})
+    def save_filament_layer(self, layer: Shapes, path: Path):
+        import datetime
+        import json
+
+        import magicclass as mcls
+        import napari
+        import pandas as pd
+
+        from . import __version__
+
+        path = Path(path)
+        path.mkdir()
+        labels = self.parent_viewer.dims.axis_labels
+        roi_id = layer.features[ROI_ID]
+
+        # save filaments
+        for idx in range(layer.nshapes):
+            data: np.ndarray = layer.data[idx]
+            ndim = data.shape[1]
+            df = pd.DataFrame(data, columns=list(labels[-ndim:]))
+            df.to_csv(
+                path / f"Filament-{roi_id[idx]}.csv",
+                index=False,
+                float_format="%.2f",
+            )
+
+        # save other info
+        info = {
+            "versions": {
+                "napari-filaments": __version__,
+                "napari": napari.__version__,
+                "magicclass": mcls.__version__,
+            },
+            "date": datetime.datetime.now().isoformat(sep=" "),
+            "images": _get_image_sources(layer),
+        }
+        with open(path / "info.json", "w") as f:
+            json.dump(info, f, indent=2)
+        return None
 
     def _update_paths(
         self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
@@ -484,7 +565,7 @@ class FilamentAnalyzer(MagicTemplate):
         properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
     ):
         """Measure properties of all the splines."""
-        data = dict.fromkeys(properties, [])
+        data = {p: [] for p in properties}
         image_data = image.data
         for idx in range(self.layer_paths.nshapes):
             sl, spl = self._get_slice_and_spline(idx)
@@ -571,6 +652,43 @@ class FilamentAnalyzer(MagicTemplate):
             new_name = f"[Total] {outs.pop()} etc."
         self.parent_viewer.add_image(tot, name=new_name, visible=False)
 
+    # TODO: how to save at subpixel resolution?
+    # @Tools.Layers.wraps
+    # @set_options(path={"mode": "w", "filter": ".zip"})
+    # def export_roi(self, layer: Shapes, path: Path):
+    #     """Export filament layer as a ImageJ ROI.zip file."""
+    #
+    #     from roifile import roiwrite, ImagejRoi, ROI_TYPE, ROI_OPTIONS
+    #     roilist: List[ImagejRoi] = []
+    #     multi_labels = self.parent_viewer.dims.axis_labels[:-2]
+    #     roi_id = layer.features[ROI_ID]
+    #     for i, data in enumerate(layer.data):
+    #         multi, coords = _split_slice_and_path(data)
+    #         n = len(multi)
+    #         dim_kwargs = {
+    #             f"{l.lower()}_position": p + 1
+    #             for l, p in zip(multi_labels[-n:], multi)
+    #         }
+    #         h, w = np.max(coords, axis=0)
+    #         edge_kwargs = dict(
+    #             left=0,
+    #             top=0,
+    #             right=int(w) + 2,
+    #             bottom=int(h) + 2,
+    #             n_coordinates=coords.shape[0],
+    #         )
+    #         roi = ImagejRoi(
+    #             roitype=ROI_TYPE.POLYLINE,
+    #             options=ROI_OPTIONS.SUB_PIXEL_RESOLUTION,
+    #             # integer_coordinates=coords[:, ::-1].astype(np.uint16) + 1,
+    #             subpixel_coordinates=coords[:, ::-1] + 1,
+    #             name=f"Filament-{roi_id[i]}",
+    #             **dim_kwargs,
+    #             **edge_kwargs,
+    #         )
+    #         roilist.append(roi)
+    #     roiwrite(path, roilist)
+
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "del.png")
     def delete_current(self, idx: Bound[_get_idx]):
@@ -641,3 +759,18 @@ def _arrange_selection(idx: Union[int, Set[int]]) -> List[int]:
         return [idx]
     else:
         return sorted(list(idx), reverse=True)
+
+
+def _get_image_sources(shapes: Shapes) -> Union[List[str], None]:
+    """Extract image sources from a shapes layer."""
+    img_layers: List[Image] = shapes.metadata.get(TARGET_IMG_LAYERS, [])
+    if not img_layers:
+        return None
+    sources = []
+    for img in img_layers:
+        source = img.metadata.get(SOURCE) or img.source.path
+        if source is not None:
+            sources.append(str(source))
+    if not sources:
+        return None
+    return sources
