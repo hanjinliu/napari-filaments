@@ -24,6 +24,7 @@ from napari.layers import Image, Shapes
 
 from . import _optimizer as _opt
 from ._spline import Measurement, Spline
+from ._table_stack import TableStack
 from ._types import weight
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ SOURCE = "source"
 
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
+    _tablestack = field(TableStack)
     target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
     target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
 
@@ -123,7 +125,9 @@ class FilamentAnalyzer(MagicTemplate):
                     data[f"{ylabel}-{i}"] = y
             else:
                 data = {xlabel: self._xdata, ylabel: self._ydata}
-            view_in_table(data, self)
+            tstack = self.find_ancestor(FilamentAnalyzer)._tablestack
+            tstack.add_table(data, name="Plot data")
+            tstack.show()
 
         def _plot(self, x, y, clear=True, **kwargs):
             if clear:
@@ -573,7 +577,9 @@ class FilamentAnalyzer(MagicTemplate):
             for k, v in data.items():
                 v.append(getattr(measure, k)())
 
-        view_in_table(data, self)
+        tstack = self._tablestack
+        tstack.add_table(data, name=image.name)
+        tstack.show()
 
     @Tabs.Measure.wraps
     def plot_curvature(
@@ -628,8 +634,6 @@ class FilamentAnalyzer(MagicTemplate):
         kymo = np.stack(profiles, axis=0)
         canvas = VispyImageCanvas()
         canvas.image = kymo
-        canvas.yrange = (0, kymo.shape[0])
-        canvas.xrange = (0, kymo.shape[1])
         canvas.show()
 
     @Tools.Layers.wraps
