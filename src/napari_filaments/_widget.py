@@ -316,7 +316,7 @@ class FilamentAnalyzer(MagicTemplate):
             df.to_csv(
                 path / f"Filament-{roi_id[idx]}.csv",
                 index=False,
-                float_format="%.2f",
+                float_format="%.3f",
             )
 
         # save other info
@@ -359,7 +359,7 @@ class FilamentAnalyzer(MagicTemplate):
         return rough.fit_filament(img, width=7, spline_error=3e-2)
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "fit.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "fit.png")
     @bind_key("F1")
     def fit_current(
         self,
@@ -389,7 +389,7 @@ class FilamentAnalyzer(MagicTemplate):
         return current_slice, spl
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "undo.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "undo.png")
     def undo_spline(self):
         """Undo the last spline fit."""
         if self._last_data is None:
@@ -409,7 +409,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._last_data = None
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "ext_l.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
     def extend_left(
         self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
     ):
@@ -420,7 +420,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "ext_r.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_r.png")
     def extend_right(
         self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
     ):
@@ -431,7 +431,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "extfit_l.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_l.png")
     def extend_and_fit_left(
         self,
         image: Bound[target_image],
@@ -447,7 +447,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "extfit_r.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_r.png")
     def extend_and_fit_right(
         self,
         image: Bound[target_image],
@@ -463,7 +463,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_l.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_l.png")
     def clip_left(
         self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
     ):
@@ -475,7 +475,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "clip_r.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_r.png")
     def clip_right(
         self, idx: Bound[_get_idx] = -1, dx: Bound[Tools.Parameters.dx] = 5.0
     ):
@@ -487,7 +487,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf_l.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_l.png")
     def clip_left_at_inflection(
         self,
         image: Bound[target_image],
@@ -503,7 +503,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf_r.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_r.png")
     def clip_right_at_inflection(
         self,
         image: Bound[target_image],
@@ -519,7 +519,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "erf2.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf2.png")
     @bind_key("F2")
     def clip_at_inflections(
         self,
@@ -690,7 +690,7 @@ class FilamentAnalyzer(MagicTemplate):
     #     roiwrite(path, roilist)
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "del.png")
+    @set_design(**ICON_KWARGS, icon=ICON_DIR / "del.png")
     def delete_current(self, idx: Bound[_get_idx]):
         """Delete selected (or the last) path."""
         if isinstance(idx, int):
