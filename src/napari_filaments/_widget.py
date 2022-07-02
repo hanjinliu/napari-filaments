@@ -16,13 +16,14 @@ from magicclass import (
     set_options,
     vfield,
 )
-from magicclass.types import Bound, Optional
+from magicclass.ext.vispy import VispyImageCanvas
+from magicclass.types import Bound, OneOf, Optional, SomeOf
 from magicclass.utils import thread_worker
 from magicclass.widgets import Figure, Table
 from napari.layers import Image, Shapes
 
 from . import _optimizer as _opt
-from ._spline import Spline
+from ._spline import Measurement, Spline
 from ._types import weight
 
 if TYPE_CHECKING:
@@ -90,10 +91,10 @@ class FilamentAnalyzer(MagicTemplate):
 
         @magicclass(widget_type="scrollable")
         class Measure(MagicTemplate):
-            def measure_length(self): ...
-            def measure_length_all(self): ...
+            def measure_properties(self): ...
             def plot_profile(self): ...
             def plot_curvature(self): ...
+            def kymograph(self): ...
 
     # fmt: on
 
@@ -180,13 +181,19 @@ class FilamentAnalyzer(MagicTemplate):
             if "C" in axes:
                 ic = axes.find("C")
                 nchn = img.shape[ic]
+                ic_ = ic + 1
                 img_layers: List[Image] = self.parent_viewer.add_image(
                     img,
                     channel_axis=ic,
                     name=[f"[C{i}] {path.stem}" for i in range(nchn)],
+                    metadata={"axes": axes[:ic] + axes[ic_:]},
                 )
             else:
-                _layer = self.parent_viewer.add_image(img, name=path.stem)
+                _layer = self.parent_viewer.add_image(
+                    img,
+                    name=path.stem,
+                    metadata={"axes": axes},
+                )
                 img_layers = [_layer]
 
             axis_labels = [c for c in axes if c != "C"]
@@ -271,8 +278,8 @@ class FilamentAnalyzer(MagicTemplate):
         return rough.fit_filament(img, width=7, spline_error=3e-2)
 
     @Tabs.Spline.Both.wraps
-    @bind_key("F1")
     @set_design(**ICON_KWARGS, icon_path=ICON_DIR / "fit.png")
+    @bind_key("F1")
     def fit_current(
         self,
         image: Bound[target_image],
@@ -471,17 +478,21 @@ class FilamentAnalyzer(MagicTemplate):
         self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
-    def measure_length(self, idx: Bound[_get_idx] = -1):
-        _, spl = self._get_slice_and_spline(idx)
-        print(spl.length())
-
-    @Tabs.Measure.wraps
-    def measure_length_all(self):
-        data = []
+    def measure_properties(
+        self,
+        image: Bound[target_image],
+        properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
+    ):
+        """Measure properties of all the splines."""
+        data = dict.fromkeys(properties, [])
+        image_data = image.data
         for idx in range(self.layer_paths.nshapes):
-            _, spl = self._get_slice_and_spline(idx)
-            data.append(spl.length())
-        view_in_table({"length": data}, self)
+            sl, spl = self._get_slice_and_spline(idx)
+            measure = Measurement(spl, image_data[sl])
+            for k, v in data.items():
+                v.append(getattr(measure, k)())
+
+        view_in_table(data, self)
 
     @Tabs.Measure.wraps
     def plot_curvature(
@@ -509,6 +520,36 @@ class FilamentAnalyzer(MagicTemplate):
         x = np.linspace(0, 1, int(length)) * length
         self.Output._plot(x, prof)
         self.Output._set_labels("Position (px)", "Intensity")
+
+    def _get_axes(self, w=None):
+        return self.parent_viewer.dims.axis_labels[:-2]
+
+    @Tabs.Measure.wraps
+    def kymograph(
+        self,
+        image: Bound[target_image],
+        time_axis: OneOf[_get_axes],
+        idx: Bound[_get_idx] = -1,
+    ):
+        """Plot kymograph."""
+        current_slice, spl = self._get_slice_and_spline(idx)
+        if isinstance(time_axis, str):
+            t0 = image.metadata["axes"].find(time_axis)
+        else:
+            t0 = time_axis
+        ntime = image.data.shape[t0]
+        profiles: List[np.ndarray] = []
+        for t in range(ntime):
+            t1 = t0 + 1
+            sl = current_slice[:t0] + (t,) + current_slice[t1:]
+            prof = spl.get_profile(image.data[sl])
+            profiles.append(prof)
+        kymo = np.stack(profiles, axis=0)
+        canvas = VispyImageCanvas()
+        canvas.image = kymo
+        canvas.yrange = (0, kymo.shape[0])
+        canvas.xrange = (0, kymo.shape[1])
+        canvas.show()
 
     @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})

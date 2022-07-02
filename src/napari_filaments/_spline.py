@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
@@ -358,3 +358,53 @@ class Spline:
         mu = opt.params.mu + border
 
         return self.clip(0.0, mu / (ndata - 1))
+
+
+class Measurement:
+    """A class for easily measure properties along a spline."""
+
+    PROPERTIES = (
+        "length",
+        "mean",
+        "std",
+        "max",
+        "min",
+        "median",
+        "mean_curvature",
+    )
+
+    def __init__(self, spl: Spline, img: np.ndarray):
+        self.spl = spl
+        self.img = img
+
+    @cached_property
+    def prof(self) -> np.ndarray:
+        return self.spl.get_profile(self.img)
+
+    def length(self) -> float:
+        """Length of the spline."""
+        return self.spl.length()
+
+    def mean(self) -> float:
+        """Mean intensity along the spline."""
+        return np.mean(self.prof)
+
+    def std(self) -> float:
+        """Standard deviation along the spline."""
+        return np.std(self.prof)
+
+    def max(self) -> float:
+        """Maximum intensity along the spline."""
+        return np.max(self.prof)
+
+    def min(self) -> float:
+        """Minimum intensity along the spline."""
+        return np.min(self.prof)
+
+    def median(self) -> float:
+        """Median intensity along the spline."""
+        return np.median(self.prof)
+
+    def mean_curvature(self) -> float:
+        """Mean curvature of the spline."""
+        return np.mean(self.spl.curvature(self.spl.sample(interval=1.0)))
