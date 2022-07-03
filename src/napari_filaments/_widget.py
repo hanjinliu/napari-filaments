@@ -35,6 +35,7 @@ ICON_KWARGS = dict(text="", min_width=42, min_height=42)
 
 # global metadata keys
 TARGET_IMG_LAYERS = "target-image-layer"
+
 ROI_ID = "ROI-ID"
 SOURCE = "source"
 IMAGE_AXES = "axes"
@@ -54,9 +55,15 @@ class FilamentAnalyzer(MagicTemplate):
         layer.
     """
 
+    def _get_available_filament_id(self, w=None) -> List[int]:
+        if self.target_filament is None:
+            return []
+        return sorted(self.target_filament.features[ROI_ID])
+
     _tablestack = field(TableStack, name="Filament Analyzer Tables")
     target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
     target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
+    filament = vfield(OneOf[_get_available_filament_id])
 
     # fmt: off
     @magictoolbar
@@ -74,9 +81,23 @@ class FilamentAnalyzer(MagicTemplate):
 
         @magicmenu
         class Parameters(MagicTemplate):
+            """
+            Global parameters of Filament Analyzer.
+
+            Attributes
+            ----------
+            lattice_width : int
+                The width of the image lattice along a filament.
+            dx : float
+                Delta x of filament clipping and extension.
+            sigma_range : (float, float)
+                The range of sigma to be used for fitting.
+
+            """
             lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
             dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
             sigma_range = vfield((0.5, 5.0), record=False)
+            target_image_filter = vfield(True, record=False)
 
         @magicmenu
         class Others(MagicTemplate):
@@ -185,6 +206,30 @@ class FilamentAnalyzer(MagicTemplate):
         _toggle_target_images(self.layer_paths, True)
         self._last_target_filament = self.target_filament
         self.parent_viewer.layers.selection = {self.target_filament}
+
+        self._filter_image_choices()
+
+        self["filament"].reset_choices()
+
+    @filament.connect
+    def _on_filament_change(self, val: int):
+        self.target_filament.selected_data = {val}
+        data = self.target_filament.data[val]
+        sl, _ = _split_slice_and_path(data)
+        self.parent_viewer.dims.set_current_step(list(range(len(sl))), sl)
+
+    def _filter_image_choices(self):
+        if not self.Tools.Parameters.target_image_filter:
+            return
+        target_image_widget: ComboBox = self["target_image"]
+        if target_image_widget.value is None:
+            return
+        cbox_idx = target_image_widget.choices.index(target_image_widget.value)
+        img_layers = _get_connected_target_image_layers(self.target_filament)
+        if len(img_layers) > 0:
+            target_image_widget.choices = img_layers
+            cbox_idx = min(cbox_idx, len(img_layers) - 1)
+            target_image_widget.value = target_image_widget.choices[cbox_idx]
 
     @Tools.Layers.wraps
     @thread_worker
@@ -303,11 +348,17 @@ class FilamentAnalyzer(MagicTemplate):
                 next_id = 0
             props[ROI_ID] = next_id
             layer_paths.current_properties = props
+            self["filament"].reset_choices()
+            try:
+                self.filament = next_id - 1
+            except Exception:
+                pass
 
         layer_paths.current_properties = {ROI_ID: 0}
         self.layer_paths = layer_paths
         if self._last_target_filament is None:
             self._last_target_filament = layer_paths
+
         return layer_paths
 
     @Tools.Layers.wraps
@@ -608,7 +659,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         sl_data.update(data)
         tstack = self._tablestack
-        tstack.add_table(sl_data, name=image.name)
+        tstack.add_table(sl_data, name=self.layer_paths.name)
         tstack.show()
         return pd.DataFrame(sl_data)
 
@@ -685,7 +736,21 @@ class FilamentAnalyzer(MagicTemplate):
             new_name = f"[Total] {outs.pop()}"
         else:
             new_name = f"[Total] {outs.pop()} etc."
-        self.parent_viewer.add_image(tot, name=new_name, visible=False)
+
+        tot_layer = self.parent_viewer.add_image(
+            tot, name=new_name, visible=False
+        )
+
+        # update target images
+        for layer in self.parent_viewer.layers:
+            if not isinstance(layer, Shapes):
+                continue
+            # if all the input images belongs to the same shapes layer, update
+            # the target image list.
+            img_layers = _get_connected_target_image_layers(layer)
+            target_names = [target.name for target in img_layers]
+            if all(img_name in target_names for img_name in names):
+                img_layers.append(tot_layer)
 
     # TODO: how to save at subpixel resolution?
     # @Tools.Layers.wraps
@@ -768,10 +833,17 @@ def _split_slice_and_path(
     return tuple(sl.ravel().astype(np.int64)), data[:, -2:]
 
 
+def _get_connected_target_image_layers(shapes: Shapes) -> List[Image]:
+    """Return all connected target image layers."""
+    return shapes.metadata.get(TARGET_IMG_LAYERS, [])
+
+
 def _toggle_target_images(shapes: Shapes, visible: bool):
     """Set target images to visible or invisible."""
-    img_layers: List[Image] = shapes.metadata.get(TARGET_IMG_LAYERS, [])
+    img_layers = _get_connected_target_image_layers(shapes)
     for img_layer in img_layers:
+        if img_layer.name.startswith("[Total]"):
+            continue
         img_layer.visible = visible
     shapes.visible = visible
 
@@ -793,7 +865,7 @@ def _arrange_selection(idx: Union[int, Set[int]]) -> List[int]:
 
 def _get_image_sources(shapes: Shapes) -> Union[List[str], None]:
     """Extract image sources from a shapes layer."""
-    img_layers: List[Image] = shapes.metadata.get(TARGET_IMG_LAYERS, [])
+    img_layers = _get_connected_target_image_layers(shapes)
     if not img_layers:
         return None
     sources = []

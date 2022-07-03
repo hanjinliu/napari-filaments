@@ -60,6 +60,15 @@ class TableStack(MagicTemplate):
     def add_table(self, df, name: str = None):
         if name is None:
             name = f"Table-{len(self)}"
-        table = Table(value=df, name=name)
+
+        table = Table(value=df, name=self._coerce_name(name))
         table.read_only = True
         self.append(table)
+
+    def _coerce_name(self, name: str):
+        stem = name
+        suffix = 0
+        while name in self:
+            name = f"{stem}-{suffix}"
+            suffix += 1
+        return name
