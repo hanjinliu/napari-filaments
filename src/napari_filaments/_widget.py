@@ -16,7 +16,6 @@ from magicclass import (
     set_options,
     vfield,
 )
-from magicclass.ext.vispy import VispyImageCanvas
 from magicclass.types import Bound, OneOf, Optional, SomeOf
 from magicclass.utils import thread_worker
 from magicclass.widgets import Figure, Separator, Table
@@ -665,9 +664,9 @@ class FilamentAnalyzer(MagicTemplate):
             prof = spl.get_profile(image.data[sl])
             profiles.append(prof)
         kymo = np.stack(profiles, axis=0)
-        canvas = VispyImageCanvas()
-        canvas.image = kymo
-        canvas.show()
+        plt = Figure()
+        plt.imshow(kymo, cmap="gray")
+        plt.show()
 
     @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
