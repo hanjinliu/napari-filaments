@@ -58,7 +58,7 @@ class FilamentAnalyzer(MagicTemplate):
     def _get_available_filament_id(self, w=None) -> List[int]:
         if self.target_filament is None:
             return []
-        return sorted(self.target_filament.features[ROI_ID])
+        return list(range(self.target_filament.nshapes))
 
     _tablestack = field(TableStack, name="Filament Analyzer Tables")
     target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
@@ -187,6 +187,8 @@ class FilamentAnalyzer(MagicTemplate):
         self._last_target_filament: Shapes = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._last_data: np.ndarray = None
+        self._dims_slider_changing = False
+        self._npaths = 0
 
     def _get_idx(self, w=None) -> Union[int, Set[int]]:
         if self.layer_paths is None:
@@ -208,15 +210,22 @@ class FilamentAnalyzer(MagicTemplate):
         self.parent_viewer.layers.selection = {self.target_filament}
 
         self._filter_image_choices()
-
-        self["filament"].reset_choices()
+        cbox: ComboBox = self["filament"]
+        cbox.reset_choices()
 
     @filament.connect
-    def _on_filament_change(self, val: int):
-        self.target_filament.selected_data = {val}
-        data = self.target_filament.data[val]
+    def _on_filament_change(self, idx: int):
+        data = self.target_filament.data[idx]
         sl, _ = _split_slice_and_path(data)
+        self._dims_slider_changing = True
         self.parent_viewer.dims.set_current_step(list(range(len(sl))), sl)
+        self._dims_slider_changing = False
+        self.target_filament.selected_data = {idx}
+
+        props = self.layer_paths.current_properties
+        next_id = self.layer_paths.nshapes
+        props[ROI_ID] = next_id
+        self.layer_paths.current_properties = props
 
     def _filter_image_choices(self):
         if not self.Tools.Parameters.target_image_filter:
@@ -331,28 +340,32 @@ class FilamentAnalyzer(MagicTemplate):
 
         @layer_paths.events.set_data.connect
         def _on_data_changed(e):
+            if (
+                self.layer_paths is not layer_paths
+                or self.layer_paths._is_moving
+                or self._dims_slider_changing
+            ):
+                return
             # delete undo history
             self._last_data = None
 
             # update current filament ROI ID
-            props = layer_paths.current_properties
-            all_ids = layer_paths.features[ROI_ID]
-            if all_ids.size > 0:
-                id_max = np.max(all_ids)
-                if id_max >= layer_paths.nshapes:
-                    features = layer_paths.features
-                    features[ROI_ID] = np.argsort(all_ids)
-                    layer_paths.features = features
-                next_id = id_max + 1
-            else:
-                next_id = 0
+            next_id = self.layer_paths.nshapes
+            if self._npaths >= next_id:
+                features = self.layer_paths.features
+                features[ROI_ID] = np.arange(next_id)
+                self.layer_paths.features = features
+            props = self.layer_paths.current_properties
             props[ROI_ID] = next_id
-            layer_paths.current_properties = props
+            self.layer_paths.current_properties = props
             self["filament"].reset_choices()
+            next_id = self.layer_paths.nshapes
             try:
                 self.filament = next_id - 1
             except Exception:
                 pass
+
+            self._npaths = next_id
 
         layer_paths.current_properties = {ROI_ID: 0}
         self.layer_paths = layer_paths
@@ -470,13 +483,9 @@ class FilamentAnalyzer(MagicTemplate):
 
     def _replace_data(self, idx: int, new_data: np.ndarray):
         """Replace the idx-th data to the new one."""
-        id = self.layer_paths.features[ROI_ID][idx]
-        props = self.layer_paths.current_properties
-        props.update({ROI_ID: id})
-        self.layer_paths.current_properties = props
-        self.layer_paths.add(new_data, shape_type="path")
-        self.layer_paths.selected_data = {idx}
-        self.layer_paths.remove_selected()
+        data = self.layer_paths.data
+        data[idx] = new_data
+        self.layer_paths.data = data
         self._last_data = None
 
     @Tabs.Spline.Left.wraps
