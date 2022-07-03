@@ -186,7 +186,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.layer_paths: Shapes = None
         self._last_target_filament: Shapes = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
-        self._last_data: np.ndarray = None
+        self._last_data: Tuple[int, np.ndarray] = None
         self._dims_slider_changing = False
         self._npaths = 0
 
@@ -431,7 +431,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         hist = self.layer_paths.data[idx]
         self._replace_data(idx, sampled)
-        self._last_data = hist
+        self._last_data = (idx, hist)
 
     def _fit_i_2d(self, width, img, coords) -> Spline:
         spl = Spline.fit(coords, degree=1, err=0.0)
@@ -478,8 +478,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Undo the last spline fit."""
         if self._last_data is None:
             return
-        idx = self.layer_paths.nshapes - 1
-        self._replace_data(idx, self._last_data)
+        self._replace_data(*self._last_data)
 
     def _replace_data(self, idx: int, new_data: np.ndarray):
         """Replace the idx-th data to the new one."""
@@ -487,6 +486,7 @@ class FilamentAnalyzer(MagicTemplate):
         data[idx] = new_data
         self.layer_paths.data = data
         self._last_data = None
+        self.filament = idx
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
