@@ -18,7 +18,7 @@ from magicclass import (
 )
 from magicclass.types import Bound, OneOf, Optional, SomeOf
 from magicclass.utils import thread_worker
-from magicclass.widgets import Figure, Separator, Table
+from magicclass.widgets import Figure, Separator
 from napari.layers import Image, Shapes
 
 from . import _optimizer as _opt
@@ -180,13 +180,10 @@ class FilamentAnalyzer(MagicTemplate):
         if self._last_target_filament in self.parent_viewer.layers:
             _toggle_target_images(self._last_target_filament, False)
 
-        self._last_target_filament = None
-        if self.layer_paths is not None:
-            self.layer_paths.visible = False
         self.layer_paths = self.target_filament
-        self._last_target_filament = self.target_filament
         self._last_data = None
-        _toggle_target_images(self._last_target_filament, True)
+        _toggle_target_images(self.layer_paths, True)
+        self._last_target_filament = self.target_filament
         self.parent_viewer.layers.selection = {self.target_filament}
 
     @Tools.Layers.wraps
@@ -309,6 +306,8 @@ class FilamentAnalyzer(MagicTemplate):
 
         layer_paths.current_properties = {ROI_ID: 0}
         self.layer_paths = layer_paths
+        if self._last_target_filament is None:
+            self._last_target_filament = layer_paths
         return layer_paths
 
     @Tools.Layers.wraps
@@ -769,17 +768,12 @@ def _split_slice_and_path(
     return tuple(sl.ravel().astype(np.int64)), data[:, -2:]
 
 
-def view_in_table(data: dict, parent: MagicTemplate):
-    table = Table(data)
-    table.native.setParent(parent.native, table.native.windowFlags())
-    table.show()
-
-
 def _toggle_target_images(shapes: Shapes, visible: bool):
     """Set target images to visible or invisible."""
     img_layers: List[Image] = shapes.metadata.get(TARGET_IMG_LAYERS, [])
     for img_layer in img_layers:
         img_layer.visible = visible
+    shapes.visible = visible
 
 
 def _assert_single_selection(idx: Union[int, Set[int]]) -> int:
