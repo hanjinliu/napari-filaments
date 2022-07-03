@@ -353,9 +353,10 @@ class Spline:
         ndata = prof.size
         border = ndata // 2
         opt = _opt.ErfOptimizer().optimize(prof[border:])
+        mu = opt.params.mu + border
+        opt.params = (mu,) + opt.params[1:]
         if callback is not None:
             callback(opt, prof)
-        mu = opt.params.mu + border
 
         return self.clip(0.0, mu / (ndata - 1))
 
