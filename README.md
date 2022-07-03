@@ -16,6 +16,7 @@ Currently implemented functions
 - Fit paths to filaments in an image as a 2-D spline curve.
 - Clip paths by fitting using error function.
 - Sub-pixel measurement of filament length.
+- Basic quantification (mean, std, etc.) along paths.
 
 ----------------------------------
 
