@@ -33,14 +33,29 @@ if TYPE_CHECKING:
 
 ICON_DIR = Path(__file__).parent / "_icon"
 ICON_KWARGS = dict(text="", min_width=42, min_height=42)
+
+# global metadata keys
 TARGET_IMG_LAYERS = "target-image-layer"
 ROI_ID = "ROI-ID"
 SOURCE = "source"
+IMAGE_AXES = "axes"
 
 
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
-    _tablestack = field(TableStack)
+    """
+    Filament Analyzer widget.
+
+    Attributes
+    ----------
+    target_filament : Shapes
+        The target Shapes layer.
+    target_image : Image
+        The target Image layer. Fitting/analysis will be performed on this
+        layer.
+    """
+
+    _tablestack = field(TableStack, name="Filament Analyzer Tables")
     target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
     target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
 
@@ -50,10 +65,10 @@ class FilamentAnalyzer(MagicTemplate):
         @magicmenu
         class Layers(MagicTemplate):
             def open_image(self): ...
-            def open_filament_layer(self): ...
-            def add_filament_layer(self): ...
+            def open_filaments(self): ...
+            def add_filaments(self): ...
             sep0 = field(Separator)
-            def save_filament_layer(self): ...
+            def save_filaments(self): ...
             sep1 = field(Separator)
             def create_total_intensity(self): ...
             # def export_roi(self): ...
@@ -117,6 +132,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         @do_not_record
         def view_data(self):
+            """View plot data in a table."""
             xlabel = self.plt.ax.get_xlabel() or "x"
             ylabel = self.plt.ax.get_ylabel() or "y"
             if isinstance(self._ydata, list):
@@ -165,9 +181,9 @@ class FilamentAnalyzer(MagicTemplate):
         if self._last_target_filament in self.parent_viewer.layers:
             _toggle_target_images(self._last_target_filament, False)
 
-        elif self._last_target_filament is not None:
-            self._last_target_filament = None
-
+        self._last_target_filament = None
+        if self.layer_paths is not None:
+            self.layer_paths.visible = False
         self.layer_paths = self.target_filament
         self._last_target_filament = self.target_filament
         self._last_data = None
@@ -196,18 +212,21 @@ class FilamentAnalyzer(MagicTemplate):
                     img,
                     channel_axis=ic,
                     name=[f"[C{i}] {path.stem}" for i in range(nchn)],
-                    metadata={"axes": axes[:ic] + axes[ic_:], SOURCE: path},
+                    metadata={
+                        IMAGE_AXES: axes[:ic] + axes[ic_:],
+                        SOURCE: path,
+                    },
                 )
             else:
                 _layer = self.parent_viewer.add_image(
                     img,
                     name=path.stem,
-                    metadata={"axes": axes, SOURCE: path},
+                    metadata={IMAGE_AXES: axes, SOURCE: path},
                 )
                 img_layers = [_layer]
 
             axis_labels = [c for c in axes if c != "C"]
-            self.add_filament_layer(self.parent_viewer.layers[-1], path.stem)
+            self.add_filaments(self.parent_viewer.layers[-1], path.stem)
             self.layer_paths.metadata[TARGET_IMG_LAYERS] = img_layers
             ndim = self.parent_viewer.dims.ndim
             if ndim == len(axis_labels):
@@ -220,7 +239,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "d"})
-    def open_filament_layer(self, path: Path):
+    def open_filaments(self, path: Path):
         import pandas as pd
 
         path = Path(path)
@@ -250,9 +269,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
-    def add_filament_layer(
-        self, target_image: Image, name: Optional[str] = None
-    ):
+    def add_filaments(self, target_image: Image, name: Optional[str] = None):
         """Add a Shapes layer for the target image."""
         if name is None:
             name = target_image.name
@@ -297,7 +314,8 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "w"})
-    def save_filament_layer(self, layer: Shapes, path: Path):
+    def save_filaments(self, layer: Shapes, path: Path):
+        """Save a Shapes layer as a directory of CSV files."""
         import datetime
         import json
 
@@ -308,7 +326,7 @@ class FilamentAnalyzer(MagicTemplate):
         from . import __version__
 
         path = Path(path)
-        path.mkdir()
+        path.mkdir(exist_ok=True)
         labels = self.parent_viewer.dims.axis_labels
         roi_id = layer.features[ROI_ID]
 
@@ -567,19 +585,34 @@ class FilamentAnalyzer(MagicTemplate):
         self,
         image: Bound[target_image],
         properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
+        slices: bool = False,
     ):
         """Measure properties of all the splines."""
+        import pandas as pd
+
+        if slices:
+            # Record slice numbers in columns such as "index_T"
+            ndim = len(image.data.shape)
+            labels = self.parent_viewer.dims.axis_labels[-ndim:-2]
+            sl_data = {f"index_{lname}": [] for lname in labels}
+        else:
+            sl_data = {}
         data = {p: [] for p in properties}
+
         image_data = image.data
         for idx in range(self.layer_paths.nshapes):
             sl, spl = self._get_slice_and_spline(idx)
             measure = Measurement(spl, image_data[sl])
+            for v, s0 in zip(sl_data.values(), sl):
+                v.append(s0)
             for k, v in data.items():
                 v.append(getattr(measure, k)())
 
+        sl_data.update(data)
         tstack = self._tablestack
-        tstack.add_table(data, name=image.name)
+        tstack.add_table(sl_data, name=image.name)
         tstack.show()
+        return pd.DataFrame(sl_data)
 
     @Tabs.Measure.wraps
     def plot_curvature(
@@ -621,7 +654,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Plot kymograph."""
         current_slice, spl = self._get_slice_and_spline(idx)
         if isinstance(time_axis, str):
-            t0 = image.metadata["axes"].find(time_axis)
+            t0 = image.metadata[IMAGE_AXES].find(time_axis)
         else:
             t0 = time_axis
         ntime = image.data.shape[t0]
