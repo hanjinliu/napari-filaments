@@ -17,7 +17,6 @@ from magicclass import (
     vfield,
 )
 from magicclass.types import Bound, OneOf, Optional, SomeOf
-from magicclass.utils import thread_worker
 from magicclass.widgets import Figure, Separator
 from napari.layers import Image, Shapes
 
@@ -183,7 +182,7 @@ class FilamentAnalyzer(MagicTemplate):
             self.plt.ylabel(y)
 
     def __init__(self):
-        self.layer_paths: Shapes = None
+        self.layer_filaments: Shapes = None
         self._last_target_filament: Shapes = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._last_data: Tuple[int, np.ndarray] = None
@@ -191,11 +190,11 @@ class FilamentAnalyzer(MagicTemplate):
         self._npaths = 0
 
     def _get_idx(self, w=None) -> Union[int, Set[int]]:
-        if self.layer_paths is None:
+        if self.layer_filaments is None:
             return 0
-        sel = self.layer_paths.selected_data
+        sel = self.layer_filaments.selected_data
         if len(sel) == 0:
-            return self.layer_paths.nshapes - 1
+            return self.layer_filaments.nshapes - 1
         return sel
 
     @target_filament.connect
@@ -203,9 +202,9 @@ class FilamentAnalyzer(MagicTemplate):
         if self._last_target_filament in self.parent_viewer.layers:
             _toggle_target_images(self._last_target_filament, False)
 
-        self.layer_paths = self.target_filament
+        self.layer_filaments = self.target_filament
         self._last_data = None
-        _toggle_target_images(self.layer_paths, True)
+        _toggle_target_images(self.layer_filaments, True)
         self._last_target_filament = self.target_filament
         self.parent_viewer.layers.selection = {self.target_filament}
 
@@ -222,10 +221,10 @@ class FilamentAnalyzer(MagicTemplate):
         self._dims_slider_changing = False
         self.target_filament.selected_data = {idx}
 
-        props = self.layer_paths.current_properties
-        next_id = self.layer_paths.nshapes
+        props = self.layer_filaments.current_properties
+        next_id = self.layer_filaments.nshapes
         props[ROI_ID] = next_id
-        self.layer_paths.current_properties = props
+        self.layer_filaments.current_properties = props
 
     def _filter_image_choices(self):
         if not self.Tools.Parameters.target_image_filter:
@@ -241,7 +240,6 @@ class FilamentAnalyzer(MagicTemplate):
             target_image_widget.value = target_image_widget.choices[cbox_idx]
 
     @Tools.Layers.wraps
-    @thread_worker
     def open_image(self, path: Path):
         """Open a TIF."""
         path = Path(path)
@@ -251,41 +249,36 @@ class FilamentAnalyzer(MagicTemplate):
             series0 = tif.series[0]
             axes = getattr(series0, "axes", "")
             img: np.ndarray = tif.asarray()
+        self._add_image(img, axes, path)
 
-        @thread_worker.to_callback
-        def _on_return():
-            if "C" in axes:
-                ic = axes.find("C")
-                nchn = img.shape[ic]
-                ic_ = ic + 1
-                img_layers: List[Image] = self.parent_viewer.add_image(
-                    img,
-                    channel_axis=ic,
-                    name=[f"[C{i}] {path.stem}" for i in range(nchn)],
-                    metadata={
-                        IMAGE_AXES: axes[:ic] + axes[ic_:],
-                        SOURCE: path,
-                    },
-                )
-            else:
-                _layer = self.parent_viewer.add_image(
-                    img,
-                    name=path.stem,
-                    metadata={IMAGE_AXES: axes, SOURCE: path},
-                )
-                img_layers = [_layer]
+    def _add_image(self, img: np.ndarray, axes: str, path: Path):
+        if "C" in axes:
+            ic = axes.find("C")
+            nchn = img.shape[ic]
+            axis_labels: List[str] = [c for c in axes if c != "C"]
+            img_layers: List[Image] = self.parent_viewer.add_image(
+                img,
+                channel_axis=ic,
+                name=[f"[C{i}] {path.stem}" for i in range(nchn)],
+                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
+            )
+        else:
+            axis_labels = list(axes)
+            _layer = self.parent_viewer.add_image(
+                img,
+                name=path.stem,
+                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
+            )
+            img_layers = [_layer]
 
-            axis_labels = [c for c in axes if c != "C"]
-            self.add_filaments(self.parent_viewer.layers[-1], path.stem)
-            self.layer_paths.metadata[TARGET_IMG_LAYERS] = img_layers
-            ndim = self.parent_viewer.dims.ndim
-            if ndim == len(axis_labels):
-                self.parent_viewer.dims.set_axis_label(
-                    list(range(ndim)), axis_labels
-                )
-            self.target_filament = self.layer_paths
-
-        return _on_return
+        self.add_filaments(self.parent_viewer.layers[-1], path.stem)
+        self.layer_filaments.metadata[TARGET_IMG_LAYERS] = img_layers
+        ndim = self.parent_viewer.dims.ndim
+        if ndim == len(axis_labels):
+            self.parent_viewer.dims.set_axis_label(
+                list(range(ndim)), axis_labels
+            )
+        self.target_filament = self.layer_filaments
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "d"})
@@ -312,10 +305,10 @@ class FilamentAnalyzer(MagicTemplate):
 
         self._set_filament_layer(layer_paths)
         layer_paths.current_properties = {ROI_ID: n_csv}
-        self.layer_paths.metadata[TARGET_IMG_LAYERS] = list(
+        self.layer_filaments.metadata[TARGET_IMG_LAYERS] = list(
             filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
         )
-        self.target_filament = self.layer_paths
+        self.target_filament = self.layer_filaments
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
@@ -341,8 +334,8 @@ class FilamentAnalyzer(MagicTemplate):
         @layer_paths.events.set_data.connect
         def _on_data_changed(e):
             if (
-                self.layer_paths is not layer_paths
-                or self.layer_paths._is_moving
+                self.layer_filaments is not layer_paths
+                or self.layer_filaments._is_moving
                 or self._dims_slider_changing
             ):
                 return
@@ -350,16 +343,16 @@ class FilamentAnalyzer(MagicTemplate):
             self._last_data = None
 
             # update current filament ROI ID
-            next_id = self.layer_paths.nshapes
+            next_id = self.layer_filaments.nshapes
             if self._npaths >= next_id:
-                features = self.layer_paths.features
+                features = self.layer_filaments.features
                 features[ROI_ID] = np.arange(next_id)
-                self.layer_paths.features = features
-            props = self.layer_paths.current_properties
+                self.layer_filaments.features = features
+            props = self.layer_filaments.current_properties
             props[ROI_ID] = next_id
-            self.layer_paths.current_properties = props
+            self.layer_filaments.current_properties = props
             self["filament"].reset_choices()
-            next_id = self.layer_paths.nshapes
+            next_id = self.layer_filaments.nshapes
             try:
                 self.filament = next_id - 1
             except Exception:
@@ -368,7 +361,7 @@ class FilamentAnalyzer(MagicTemplate):
             self._npaths = next_id
 
         layer_paths.current_properties = {ROI_ID: 0}
-        self.layer_paths = layer_paths
+        self.layer_filaments = layer_paths
         if self._last_target_filament is None:
             self._last_target_filament = layer_paths
 
@@ -421,7 +414,7 @@ class FilamentAnalyzer(MagicTemplate):
         self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
     ):
         if idx < 0:
-            idx += self.layer_paths.nshapes
+            idx += self.layer_filaments.nshapes
         if spl.length() > 1000:
             raise ValueError("Spline is too long.")
         sampled = spl.sample(interval=1.0)
@@ -429,7 +422,7 @@ class FilamentAnalyzer(MagicTemplate):
             sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
             sampled = np.concatenate([sl, sampled], axis=1)
 
-        hist = self.layer_paths.data[idx]
+        hist = self.layer_filaments.data[idx]
         self._replace_data(idx, sampled)
         self._last_data = (idx, hist)
 
@@ -454,10 +447,10 @@ class FilamentAnalyzer(MagicTemplate):
         """Fit current spline to the image."""
         if not isinstance(image, Image):
             raise TypeError("'image' must be a Image layer.")
-        self.layer_paths._finish_drawing()
+        self.layer_filaments._finish_drawing()
         indices = _arrange_selection(idx)
         for i in indices:
-            data: np.ndarray = self.layer_paths.data[i]
+            data: np.ndarray = self.layer_filaments.data[i]
             current_slice, data = _split_slice_and_path(data)
             fit = self._fit_i_2d(width, image.data[current_slice], data)
             self._update_paths(i, fit, current_slice)
@@ -465,7 +458,7 @@ class FilamentAnalyzer(MagicTemplate):
     def _get_slice_and_spline(
         self, idx: int
     ) -> Tuple[Tuple[int, ...], Spline]:
-        data: np.ndarray = self.layer_paths.data[idx]
+        data: np.ndarray = self.layer_filaments.data[idx]
         current_slice, data = _split_slice_and_path(data)
         if data.shape[0] < 4:
             data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
@@ -482,9 +475,9 @@ class FilamentAnalyzer(MagicTemplate):
 
     def _replace_data(self, idx: int, new_data: np.ndarray):
         """Replace the idx-th data to the new one."""
-        data = self.layer_paths.data
+        data = self.layer_filaments.data
         data[idx] = new_data
-        self.layer_paths.data = data
+        self.layer_filaments.data = data
         self._last_data = None
         self.filament = idx
 
@@ -658,7 +651,7 @@ class FilamentAnalyzer(MagicTemplate):
         data = {p: [] for p in properties}
 
         image_data = image.data
-        for idx in range(self.layer_paths.nshapes):
+        for idx in range(self.layer_filaments.nshapes):
             sl, spl = self._get_slice_and_spline(idx)
             measure = Measurement(spl, image_data[sl])
             for v, s0 in zip(sl_data.values(), sl):
@@ -668,7 +661,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         sl_data.update(data)
         tstack = self._tablestack
-        tstack.add_table(sl_data, name=self.layer_paths.name)
+        tstack.add_table(sl_data, name=self.layer_filaments.name)
         tstack.show()
         return pd.DataFrame(sl_data)
 
@@ -712,7 +705,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Plot kymograph."""
         current_slice, spl = self._get_slice_and_spline(idx)
         if isinstance(time_axis, str):
-            t0 = image.metadata[IMAGE_AXES].find(time_axis)
+            t0 = image.metadata[IMAGE_AXES].index(time_axis)
         else:
             t0 = time_axis
         ntime = image.data.shape[t0]
@@ -804,8 +797,10 @@ class FilamentAnalyzer(MagicTemplate):
         """Delete selected (or the last) path."""
         if isinstance(idx, int):
             idx = {idx}
-        self.layer_paths.selected_data = idx
-        self.layer_paths.remove_selected()
+        self.layer_filaments.selected_data = idx
+        self.layer_filaments.remove_selected()
+        if len(idx) == 1:
+            self.filament = min(idx.pop(), len(self.layer_filaments.data) - 1)
 
     @Tools.Others.wraps
     @do_not_record
