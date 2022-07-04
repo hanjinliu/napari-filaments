@@ -798,7 +798,9 @@ class FilamentAnalyzer(MagicTemplate):
         self.target_filaments.selected_data = idx
         self.target_filaments.remove_selected()
         if len(idx) == 1:
-            self.filament = min(idx.pop(), len(self.target_filaments.data) - 1)
+            self.filament = min(
+                list(idx)[0], len(self.target_filaments.data) - 1
+            )
             self.target_filaments.selected_data = {self.filament}
 
     @Tools.Others.wraps
