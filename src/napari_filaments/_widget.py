@@ -39,6 +39,8 @@ ROI_ID = "ROI-ID"
 SOURCE = "source"
 IMAGE_AXES = "axes"
 
+ROI_FMT = "[{" + ROI_ID + "}]"
+
 
 @magicclass
 class FilamentAnalyzer(MagicTemplate):
@@ -55,12 +57,12 @@ class FilamentAnalyzer(MagicTemplate):
     """
 
     def _get_available_filament_id(self, w=None) -> List[int]:
-        if self.target_filament is None:
+        if self.target_filaments is None:
             return []
-        return list(range(self.target_filament.nshapes))
+        return list(range(self.target_filaments.nshapes))
 
     _tablestack = field(TableStack, name="Filament Analyzer Tables")
-    target_filament: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
+    target_filaments: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
     target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
     filament = vfield(OneOf[_get_available_filament_id])
 
@@ -196,29 +198,37 @@ class FilamentAnalyzer(MagicTemplate):
             return self.target_filaments.nshapes - 1
         return sel
 
-    @target_filament.connect
+    @target_filaments.connect
     def _on_change(self):
         if self._last_target_filament in self.parent_viewer.layers:
             _toggle_target_images(self._last_target_filament, False)
 
-        self.target_filaments = self.target_filament
+        # old parameters
+        _sl = self.parent_viewer.dims.current_step[:-2]
+        _fil = self.filament
+
         self._last_data = None
         _toggle_target_images(self.target_filaments, True)
-        self._last_target_filament = self.target_filament
-        self.parent_viewer.layers.selection = {self.target_filament}
+        self._last_target_filament = self.target_filaments
+        self.parent_viewer.layers.selection = {self.target_filaments}
 
         self._filter_image_choices()
         cbox: ComboBox = self["filament"]
         cbox.reset_choices()
 
+        # restore old parameters
+        if _fil in cbox.choices:
+            cbox.value = _fil
+        self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
+
     @filament.connect
     def _on_filament_change(self, idx: int):
-        data = self.target_filament.data[idx]
-        sl, _ = _split_slice_and_path(data)
+        data = self.target_filaments.data[idx]
+        _sl, _ = _split_slice_and_path(data)
         self._dims_slider_changing = True
-        self.parent_viewer.dims.set_current_step(list(range(len(sl))), sl)
+        self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
         self._dims_slider_changing = False
-        self.target_filament.selected_data = {idx}
+        self.target_filaments.selected_data = {idx}
 
         props = self.target_filaments.current_properties
         next_id = self.target_filaments.nshapes
@@ -232,7 +242,7 @@ class FilamentAnalyzer(MagicTemplate):
         if target_image_widget.value is None:
             return
         cbox_idx = target_image_widget.choices.index(target_image_widget.value)
-        img_layers = _get_connected_target_image_layers(self.target_filament)
+        img_layers = _get_connected_target_image_layers(self.target_filaments)
         if len(img_layers) > 0:
             target_image_widget.choices = img_layers
             cbox_idx = min(cbox_idx, len(img_layers) - 1)
@@ -298,7 +308,7 @@ class FilamentAnalyzer(MagicTemplate):
             shape_type="path",
             edge_width=0.5,
             properties={ROI_ID: list(range(n_csv))},
-            text=dict(string="[{" + ROI_ID + "}]", color="white", size=8),
+            text=dict(string=ROI_FMT, color="white", size=8),
         )
 
         self._set_filament_layer(layer_paths)
@@ -306,7 +316,6 @@ class FilamentAnalyzer(MagicTemplate):
         self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
             filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
         )
-        self.target_filament = self.target_filaments
 
     @Tools.Layers.wraps
     @set_options(name={"text": "Use default name."})
@@ -322,7 +331,7 @@ class FilamentAnalyzer(MagicTemplate):
             name=f"[F] {name}",
             edge_width=0.5,
             properties={ROI_ID: 0},
-            text=dict(string="[{" + ROI_ID + "}]", color="white", size=8),
+            text=dict(string=ROI_FMT, color="white", size=8),
         )
         return self._set_filament_layer(layer_paths)
 
@@ -797,7 +806,7 @@ class FilamentAnalyzer(MagicTemplate):
             idx = {idx}
         self.target_filaments.selected_data = idx
         self.target_filaments.remove_selected()
-        if len(idx) == 1:
+        if len(idx) == 1 and self.target_filaments.nshapes > 0:
             self.filament = min(
                 list(idx)[0], len(self.target_filaments.data) - 1
             )
