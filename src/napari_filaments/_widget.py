@@ -1,4 +1,5 @@
 import re
+import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Set, Tuple, Union
 
@@ -184,11 +185,11 @@ class FilamentAnalyzer(MagicTemplate):
             self.plt.ylabel(y)
 
     def __init__(self):
-        self._last_target_filament: Shapes = None
+        self._last_target_filaments = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._last_data: Tuple[int, np.ndarray] = None
         self._dims_slider_changing = False
-        self._npaths = 0
+        self._nfilaments = 0
 
     def _get_idx(self, w=None) -> Union[int, Set[int]]:
         if self.target_filaments is None:
@@ -198,18 +199,38 @@ class FilamentAnalyzer(MagicTemplate):
             return self.target_filaments.nshapes - 1
         return sel
 
+    @property
+    def last_target_filaments(self) -> Union[Shapes, None]:
+        if self._last_target_filaments is None:
+            return None
+        return self._last_target_filaments()
+
+    @last_target_filaments.setter
+    def last_target_filaments(self, val: Union[Shapes, None]):
+        if val is None:
+            self._last_target_filaments = None
+            return
+
+        if not isinstance(val, Shapes):
+            raise TypeError(
+                f"Cannot set type {type(val)} to `last_target_filaments`."
+            )
+        self._last_target_filaments = weakref.ref(val)
+
     @target_filaments.connect
     def _on_change(self):
-        if self._last_target_filament in self.parent_viewer.layers:
-            _toggle_target_images(self._last_target_filament, False)
-
         # old parameters
         _sl = self.parent_viewer.dims.current_step[:-2]
         _fil = self.filament
+        if self.last_target_filaments is not None:
+            _mode = self.last_target_filaments.mode
+            _toggle_target_images(self.last_target_filaments, False)
+        else:
+            _mode = "pan_zoom"
 
         self._last_data = None
         _toggle_target_images(self.target_filaments, True)
-        self._last_target_filament = self.target_filaments
+        self.last_target_filaments = self.target_filaments
         self.parent_viewer.layers.selection = {self.target_filaments}
 
         self._filter_image_choices()
@@ -217,6 +238,7 @@ class FilamentAnalyzer(MagicTemplate):
         cbox.reset_choices()
 
         # restore old parameters
+        self.target_filaments.mode = _mode
         if _fil in cbox.choices:
             cbox.value = _fil
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
@@ -335,13 +357,11 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._set_filament_layer(layer_paths)
 
-    def _set_filament_layer(self, layer_paths: Shapes):
-        layer_paths.mode = "add_path"
-
-        @layer_paths.events.set_data.connect
+    def _set_filament_layer(self, new_filaments_layer: Shapes):
+        @new_filaments_layer.events.set_data.connect
         def _on_data_changed(e):
             if (
-                self.target_filaments is not layer_paths
+                self.target_filaments is not new_filaments_layer
                 or self.target_filaments._is_moving
                 or self._dims_slider_changing
             ):
@@ -351,7 +371,7 @@ class FilamentAnalyzer(MagicTemplate):
 
             # update current filament ROI ID
             next_id = self.target_filaments.nshapes
-            if self._npaths >= next_id:
+            if self._nfilaments >= next_id:
                 features = self.target_filaments.features
                 features[ROI_ID] = np.arange(next_id)
                 self.target_filaments.features = features
@@ -365,14 +385,16 @@ class FilamentAnalyzer(MagicTemplate):
             except Exception:
                 pass
 
-            self._npaths = next_id
+            self._nfilaments = next_id
 
-        layer_paths.current_properties = {ROI_ID: 0}
-        self.target_filaments = layer_paths
-        if self._last_target_filament is None:
-            self._last_target_filament = layer_paths
+        new_filaments_layer.current_properties = {ROI_ID: 0}
+        self.target_filaments = new_filaments_layer
+        if self.last_target_filaments is None:
+            self.last_target_filaments = new_filaments_layer
 
-        return layer_paths
+        new_filaments_layer.mode = "add_path"
+
+        return new_filaments_layer
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "w"})
