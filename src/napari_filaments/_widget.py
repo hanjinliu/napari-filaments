@@ -75,6 +75,10 @@ class FilamentAnalyzer(MagicTemplate):
             def open_image(self): ...
             def open_filaments(self): ...
             def add_filaments(self): ...
+
+            @magicmenu
+            class Import(MagicTemplate):
+                def from_roi(self): ...
             sep0 = field(Separator)
             def save_filaments(self): ...
             sep1 = field(Separator)
@@ -313,6 +317,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tools.Layers.wraps
     @set_options(path={"mode": "d"})
     def open_filaments(self, path: Path):
+        """Open a directory with csv files as a filament layer."""
         import pandas as pd
 
         path = Path(path)
@@ -321,20 +326,22 @@ class FilamentAnalyzer(MagicTemplate):
         for p in path.glob("*.csv"):
             df = pd.read_csv(p)
             all_csv.append(df.values)
-        n_csv = len(all_csv)
+        self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
 
+    def _load_filament_coordinates(self, data: List[np.ndarray], name: str):
+        ndata = len(data)
         layer_paths = self.parent_viewer.add_shapes(
-            all_csv,
+            data,
             edge_color=self._color_default,
-            name=f"[F] {path.stem}",
+            name=name,
             shape_type="path",
             edge_width=0.5,
-            properties={ROI_ID: list(range(n_csv))},
+            properties={ROI_ID: np.arange(ndata, dtype=np.uint32)},
             text=dict(string=ROI_FMT, color="white", size=8),
         )
 
         self._set_filament_layer(layer_paths)
-        layer_paths.current_properties = {ROI_ID: n_csv}
+        layer_paths.current_properties = {ROI_ID: ndata}
         self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
             filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
         )
@@ -351,6 +358,7 @@ class FilamentAnalyzer(MagicTemplate):
             ndim=target_image.ndim,
             edge_color=self._color_default,
             name=f"[F] {name}",
+            metadata={IMAGE_AXES: target_image.metadata[IMAGE_AXES]},
             edge_width=0.5,
             properties={ROI_ID: 0},
             text=dict(string=ROI_FMT, color="white", size=8),
@@ -395,6 +403,34 @@ class FilamentAnalyzer(MagicTemplate):
         new_filaments_layer.mode = "add_path"
 
         return new_filaments_layer
+
+    @Tools.Layers.Import.wraps
+    @set_design(text="From ImageJ ROI")
+    def from_roi(self, path: Path):
+        """Import ImageJ Roi zip file as filaments."""
+        from roifile import ROI_TYPE, roiread
+
+        path = Path(path)
+        rois = roiread(path)
+        if not isinstance(rois, list):
+            rois = [rois]
+
+        shapes = self.target_filaments
+        axes = shapes.metadata[IMAGE_AXES]
+
+        for roi in rois:
+            if roi.roitype not in (ROI_TYPE.LINE, ROI_TYPE.POLYLINE):
+                raise ValueError(f"ROI type {roi.roitype.name} not supported")
+            # load coordinates
+            yx: np.ndarray = roi.coordinates()[:, ::-1]
+            p = roi.position
+            t = roi.t_position if "T" in axes else -1
+            z = roi.z_position if "Z" in axes else -1
+
+            d = np.array([x - 1 for x in [p, t, z] if x > 0])
+            stacked = np.stack([d] * yx.shape[0], axis=0)
+            multi_coords = np.concatenate([stacked, yx], axis=1)
+            self.target_filaments.add_paths(multi_coords)
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "w"})
@@ -467,7 +503,7 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "fit.png")
     @bind_key("F1")
-    def fit_current(
+    def fit_filament(
         self,
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,

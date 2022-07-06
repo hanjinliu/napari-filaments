@@ -33,7 +33,7 @@ def test_fit(make_napari_viewer):
     ui.open_image(IMAGE_PATH)
 
     ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
-    ui.fit_current(ui.parent_viewer.layers[0])
+    ui.fit_filament(ui.parent_viewer.layers[0])
 
     ui.clip_left()
     ui.clip_right()
@@ -47,7 +47,7 @@ def test_io(make_napari_viewer):
     img_layer = ui.target_image
 
     ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
-    ui.fit_current(img_layer)
+    ui.fit_filament(img_layer)
 
     data0 = ui.target_filaments.data
 
@@ -66,7 +66,7 @@ def test_measure(make_napari_viewer):
     img_layer = ui.target_image
 
     ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
-    ui.fit_current(img_layer)
+    ui.fit_filament(img_layer)
 
     ui.target_filaments.add([[10, 10], [10, 50]], shape_type="path")
 
