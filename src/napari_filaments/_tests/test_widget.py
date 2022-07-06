@@ -159,3 +159,16 @@ def test_target_change(make_napari_viewer):
 
     ui["target_filaments"].value = ui["target_filaments"].choices[0]
     assert ui.filament == 1
+
+
+def test_add_filament_layer(make_napari_viewer):
+    from napari.layers import Shapes
+
+    ui = _get_dock_widget(make_napari_viewer)
+    img = rng.normal(size=(5, 100, 100))
+    ui._add_image(img, "TYX", DUMMY_PATH)
+    ui.add_filaments()
+
+    assert type(ui.parent_viewer.layers[-1]) is Shapes
+    assert type(ui.parent_viewer.layers[-2]) is Shapes
+    assert ui.parent_viewer.layers[0].visible

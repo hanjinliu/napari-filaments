@@ -1,7 +1,7 @@
 import re
 import weakref
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Iterable, List, Set, Tuple, TypeVar, Union
 
 import numpy as np
 from magicclass import (
@@ -17,7 +17,7 @@ from magicclass import (
     set_options,
     vfield,
 )
-from magicclass.types import Bound, OneOf, Optional, SomeOf
+from magicclass.types import Bound, OneOf, SomeOf
 from magicclass.widgets import Figure, Separator
 from napari.layers import Image, Shapes
 
@@ -290,7 +290,7 @@ class FilamentAnalyzer(MagicTemplate):
         if "C" in axes:
             ic = axes.find("C")
             nchn = img.shape[ic]
-            axis_labels: List[str] = [c for c in axes if c != "C"]
+            axis_labels: Tuple[str] = tuple(c for c in axes if c != "C")
             img_layers: List[Image] = self.parent_viewer.add_image(
                 img,
                 channel_axis=ic,
@@ -298,7 +298,7 @@ class FilamentAnalyzer(MagicTemplate):
                 metadata={IMAGE_AXES: axis_labels, SOURCE: path},
             )
         else:
-            axis_labels = list(axes)
+            axis_labels = tuple(axes)
             _layer = self.parent_viewer.add_image(
                 img,
                 name=path.stem,
@@ -306,8 +306,7 @@ class FilamentAnalyzer(MagicTemplate):
             )
             img_layers = [_layer]
 
-        self.add_filaments(self.parent_viewer.layers[-1], path.stem)
-        self.target_filaments.metadata[TARGET_IMG_LAYERS] = img_layers
+        self._add_filament_layer(img_layers, path.stem)
         ndim = self.parent_viewer.dims.ndim
         if ndim == len(axis_labels):
             self.parent_viewer.dims.set_axis_label(
@@ -347,23 +346,29 @@ class FilamentAnalyzer(MagicTemplate):
         )
 
     @Tools.Layers.wraps
-    @set_options(name={"text": "Use default name."})
-    def add_filaments(self, target_image: Image, name: Optional[str] = None):
+    def add_filaments(self):
+        images = self.target_filaments.metadata[TARGET_IMG_LAYERS]
+        name = self.target_filaments.name.lstrip("[F] ")
+        return self._add_filament_layer(images, name)
+
+    def _add_filament_layer(self, images: List[Image], name: str):
         """Add a Shapes layer for the target image."""
-        if name is None:
-            name = target_image.name
-            if mactched := re.findall(r"\[.*\](.+)", name):
-                name = mactched[0]
-        layer_paths = self.parent_viewer.add_shapes(
-            ndim=target_image.ndim,
+        # check input images
+        ndim: int = _get_unique_value(img.ndim for img in images)
+        axes: Tuple[str] = _get_unique_value(
+            img.metadata[IMAGE_AXES] for img in images
+        )
+        layer = self.parent_viewer.add_shapes(
+            ndim=ndim,
             edge_color=self._color_default,
             name=f"[F] {name}",
-            metadata={IMAGE_AXES: target_image.metadata[IMAGE_AXES]},
+            metadata={IMAGE_AXES: axes, TARGET_IMG_LAYERS: images},
             edge_width=0.5,
             properties={ROI_ID: 0},
             text=dict(string=ROI_FMT, color="white", size=8),
         )
-        return self._set_filament_layer(layer_paths)
+
+        return self._set_filament_layer(layer)
 
     def _set_filament_layer(self, new_filaments_layer: Shapes):
         @new_filaments_layer.events.set_data.connect
@@ -948,3 +953,13 @@ def _get_image_sources(shapes: Shapes) -> Union[List[str], None]:
     if not sources:
         return None
     return sources
+
+
+_V = TypeVar("_V")
+
+
+def _get_unique_value(vals: Iterable[_V]) -> _V:
+    s = set(vals)
+    if len(s) != 1:
+        raise ValueError(f"Not a unique value: {s}")
+    return next(iter(s))
