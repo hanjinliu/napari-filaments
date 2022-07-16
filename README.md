@@ -9,14 +9,35 @@
 
 A napari plugin for filament analysis.
 
+This plugin helps you to manually track filaments using path shapes of `Shapes` layer.
+
 ![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fit.gif)
 
 Currently implemented functions
 
 - Fit paths to filaments in an image as a 2-D spline curve.
-- Clip paths by fitting using error function.
-- Sub-pixel measurement of filament length.
+- Clip/extend paths.
+- Measurement of filament length at sub-pixel precision.
 - Basic quantification (mean, std, etc.) along paths.
+- Import paths from ImageJ ROI file.
+
+Basic Usage
+-----------
+
+Click `Layers > open image` to open a tif file. You'll find the image you chose and a shapes layer are added to the layer list.
+
+![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fig.png)
+
+- The "target filaments" box shows the working shapes layer.
+- The "target image" box shows the image layer on which fitting and quantification will be conducted.
+- The "filament" box shows currently selected shape (initially this box is empty).
+
+Add path shapes and push
+
+![](https://github.com/hanjinliu/napari-filaments/raw/main/src/napari_filaments/_icon/fig.png)
+
+button or key `F1` to fit the shape to the filament in the target image layer.
+
 
 ----------------------------------
 
