@@ -32,11 +32,7 @@ Click `Layers > open image` to open a tif file. You'll find the image you chose 
 - The "target image" box shows the image layer on which fitting and quantification will be conducted.
 - The "filament" box shows currently selected shape (initially this box is empty).
 
-Add path shapes and push
-
-![](https://github.com/hanjinliu/napari-filaments/raw/main/src/napari_filaments/_icon/fig.png)
-
-button or key `F1` to fit the shape to the filament in the target image layer.
+Add path shapes and push key `F1` to fit the shape to the filament in the target image layer.
 
 
 ----------------------------------
