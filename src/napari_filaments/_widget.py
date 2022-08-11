@@ -455,13 +455,14 @@ class FilamentAnalyzer(MagicTemplate):
         labels = self.parent_viewer.dims.axis_labels
         roi_id = layer.features[ROI_ID]
 
+        ndigits = max(int(np.ceil(np.log10(layer.nshapes))), 2)
         # save filaments
         for idx in range(layer.nshapes):
             data: np.ndarray = layer.data[idx]
             ndim = data.shape[1]
             df = pd.DataFrame(data, columns=list(labels[-ndim:]))
             df.to_csv(
-                path / f"Filament-{roi_id[idx]}.csv",
+                path / f"Filament-{roi_id[idx]:0>{ndigits}}.csv",
                 index=False,
                 float_format="%.3f",
             )
