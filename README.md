@@ -26,13 +26,23 @@ Basic Usage
 
 Click `Layers > open image` to open a tif file. You'll find the image you chose and a shapes layer are added to the layer list.
 
-![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fig.png)
+![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fig-1.png)
 
 - The "target filaments" box shows the working shapes layer.
 - The "target image" box shows the image layer on which fitting and quantification will be conducted.
 - The "filament" box shows currently selected shape (initially this box is empty).
 
 Add path shapes and push key `F1` to fit the shape to the filament in the target image layer.
+
+- In the "Spline" tab, you can cut/extend or re-fit splines.
+- In the "Measure" tab, click "measure property" to measure mean instensity etc along each spline.
+
+How it works
+------------
+
+Spline fitting is done as following.
+
+![](https://github.com/hanjinliu/napari-filaments/raw/main/resources/fig-2.png)
 
 
 ----------------------------------
