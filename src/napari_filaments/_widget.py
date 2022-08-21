@@ -93,12 +93,18 @@ class FilamentAnalyzer(MagicTemplate):
             Attributes
             ----------
             lattice_width : int
-                The width of the image lattice along a filament.
+                The width of the image lattice along a filament. Larger value
+                increases filament search range but neighbor filaments may
+                affect.
             dx : float
-                Delta x of filament clipping and extension.
+                Δx of filament clipping and extension.
             sigma_range : (float, float)
-                The range of sigma to be used for fitting.
-
+                The range of sigma to be used for fitting to error function.
+                This parameter does not affect fitting results. You'll be
+                warned if the fitting result was out of this range.
+            target_image_filter : bool
+                If true, the choice of target image is filtered for each
+                filament layer so that only relevant layers will be shown.
             """
             lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
             dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
@@ -284,7 +290,7 @@ class FilamentAnalyzer(MagicTemplate):
             series0 = tif.series[0]
             axes = getattr(series0, "axes", "")
             img: np.ndarray = tif.asarray()
-        self._add_image(img, axes, path)
+        return self._add_image(img, axes, path)
 
     def _add_image(self, img: np.ndarray, axes: str, path: Path):
         if "C" in axes:
@@ -436,6 +442,7 @@ class FilamentAnalyzer(MagicTemplate):
             stacked = np.stack([d] * yx.shape[0], axis=0)
             multi_coords = np.concatenate([stacked, yx], axis=1)
             self.target_filaments.add_paths(multi_coords)
+        return None
 
     @Tools.Layers.wraps
     @set_options(path={"mode": "w"})
@@ -496,6 +503,7 @@ class FilamentAnalyzer(MagicTemplate):
         hist = self.target_filaments.data[idx]
         self._replace_data(idx, sampled)
         self._last_data = (idx, hist)
+        return None
 
     def _fit_i_2d(self, width, img, coords) -> Spline:
         spl = Spline.fit(coords, degree=1, err=0.0)
@@ -525,6 +533,7 @@ class FilamentAnalyzer(MagicTemplate):
             current_slice, data = _split_slice_and_path(data)
             fit = self._fit_i_2d(width, image.data[current_slice], data)
             self._update_paths(i, fit, current_slice)
+        return None
 
     def _get_slice_and_spline(
         self, idx: int
@@ -542,7 +551,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Undo the last spline fit."""
         if self._last_data is None:
             return
-        self._replace_data(*self._last_data)
+        return self._replace_data(*self._last_data)
 
     def _replace_data(self, idx: int, new_data: np.ndarray):
         """Replace the idx-th data to the new one."""
@@ -551,6 +560,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.target_filaments.data = data
         self._last_data = None
         self.filament = idx
+        return None
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
@@ -561,7 +571,7 @@ class FilamentAnalyzer(MagicTemplate):
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         out = spl.extend_left(dx)
-        self._update_paths(idx, out, current_slice)
+        return self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_r.png")
@@ -572,7 +582,7 @@ class FilamentAnalyzer(MagicTemplate):
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx)
         out = spl.extend_right(dx)
-        self._update_paths(idx, out, current_slice)
+        return self._update_paths(idx, out, current_slice)
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_l.png")
@@ -588,7 +598,7 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.extend_filament_left(
             image.data[current_slice], dx, width=11, spline_error=3e-2
         )
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_r.png")
@@ -604,7 +614,7 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.extend_filament_right(
             image.data[current_slice], dx, width=11, spline_error=3e-2
         )
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_l.png")
@@ -616,7 +626,7 @@ class FilamentAnalyzer(MagicTemplate):
         current_slice, spl = self._get_slice_and_spline(idx)
         start = dx / spl.length()
         fit = spl.clip(start, 1.0)
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_r.png")
@@ -628,7 +638,7 @@ class FilamentAnalyzer(MagicTemplate):
         current_slice, spl = self._get_slice_and_spline(idx)
         stop = 1.0 - dx / spl.length()
         fit = spl.clip(0.0, stop)
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_l.png")
@@ -644,7 +654,7 @@ class FilamentAnalyzer(MagicTemplate):
             image.data[current_slice],
             callback=self._show_fitting_result,
         )
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Right.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_r.png")
@@ -660,7 +670,7 @@ class FilamentAnalyzer(MagicTemplate):
             image.data[current_slice],
             callback=self._show_fitting_result,
         )
-        self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, current_slice)
 
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf2.png")
@@ -679,6 +689,7 @@ class FilamentAnalyzer(MagicTemplate):
                 callback=self._show_fitting_result,
             )
             self._update_paths(i, out, current_slice)
+        return None
 
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
         """Callback function for error function fitting"""
@@ -700,7 +711,7 @@ class FilamentAnalyzer(MagicTemplate):
             self.Output.plt.text(
                 0, np.min(ydata), "Sigma out of range.", color="crimson"
             )
-        self.Output._set_labels("Data points", "Intensity")
+        return self.Output._set_labels("Data points", "Intensity")
 
     @Tabs.Measure.wraps
     def measure_properties(
@@ -790,6 +801,7 @@ class FilamentAnalyzer(MagicTemplate):
         plt = Figure()
         plt.imshow(kymo, cmap="gray")
         plt.show()
+        return None
 
     @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
@@ -875,6 +887,7 @@ class FilamentAnalyzer(MagicTemplate):
                 list(idx)[0], len(self.target_filaments.data) - 1
             )
             self.target_filaments.selected_data = {self.filament}
+        return None
 
     @Tools.Others.wraps
     @do_not_record
@@ -891,7 +904,8 @@ class FilamentAnalyzer(MagicTemplate):
     @Tools.Others.wraps
     @do_not_record
     def send_widget_to_viewer(self):
-        self.parent_viewer.update_console({"ui": self})
+        """Add this widget to the viewer console as identifier 'ui'."""
+        return self.parent_viewer.update_console({"ui": self})
 
     @nogui
     @do_not_record
