@@ -1,7 +1,6 @@
 import re
 import weakref
-from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, List, Set, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, Iterable, List, Tuple, TypeVar
 
 import numpy as np
 from magicclass import (
@@ -17,7 +16,7 @@ from magicclass import (
     set_options,
     vfield,
 )
-from magicclass.types import Bound, OneOf, SomeOf
+from magicclass.types import Bound, OneOf, SomeOf, Path
 from magicclass.widgets import Figure, Separator
 from napari.layers import Image, Shapes
 
@@ -26,8 +25,7 @@ from ._spline import Measurement, Spline
 from ._table_stack import TableStack
 from ._types import weight
 
-if TYPE_CHECKING:
-    from magicclass.fields import MagicValueField
+if TYPE_CHECKING:  # pragma: no cover
     from magicgui.widgets import ComboBox
 
 ICON_DIR = Path(__file__).parent / "_icon"
@@ -57,14 +55,14 @@ class FilamentAnalyzer(MagicTemplate):
         layer.
     """
 
-    def _get_available_filament_id(self, w=None) -> List[int]:
+    def _get_available_filament_id(self, w=None) -> "list[int]":
         if self.target_filaments is None:
             return []
         return list(range(self.target_filaments.nshapes))
 
     _tablestack = field(TableStack, name="Filament Analyzer Tables")
-    target_filaments: "MagicValueField[ComboBox, Shapes]" = vfield(Shapes)
-    target_image: "MagicValueField[ComboBox, Image]" = vfield(Image)
+    target_filaments = vfield(Shapes)
+    target_image = vfield(Image)
     filament = vfield(OneOf[_get_available_filament_id])
 
     # fmt: off
@@ -201,7 +199,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._dims_slider_changing = False
         self._nfilaments = 0
 
-    def _get_idx(self, w=None) -> Union[int, Set[int]]:
+    def _get_idx(self, w=None) -> "int | set[int]":
         if self.target_filaments is None:
             return 0
         sel = self.target_filaments.selected_data
@@ -210,13 +208,13 @@ class FilamentAnalyzer(MagicTemplate):
         return sel
 
     @property
-    def last_target_filaments(self) -> Union[Shapes, None]:
+    def last_target_filaments(self) -> "Shapes | None":
         if self._last_target_filaments is None:
             return None
         return self._last_target_filaments()
 
     @last_target_filaments.setter
-    def last_target_filaments(self, val: Union[Shapes, None]):
+    def last_target_filaments(self, val: "Shapes | None"):
         if val is None:
             self._last_target_filaments = None
             return
@@ -281,7 +279,7 @@ class FilamentAnalyzer(MagicTemplate):
             target_image_widget.value = target_image_widget.choices[cbox_idx]
 
     @Tools.Layers.wraps
-    def open_image(self, path: Path):
+    def open_image(self, path: Path.Read["*.tif;*.tiff"]):
         """Open a TIF."""
         path = Path(path)
         from tifffile import TiffFile
@@ -296,8 +294,8 @@ class FilamentAnalyzer(MagicTemplate):
         if "C" in axes:
             ic = axes.find("C")
             nchn = img.shape[ic]
-            axis_labels: Tuple[str] = tuple(c for c in axes if c != "C")
-            img_layers: List[Image] = self.parent_viewer.add_image(
+            axis_labels: "tuple[str, ...]" = tuple(c for c in axes if c != "C")
+            img_layers: "list[Image]" = self.parent_viewer.add_image(
                 img,
                 channel_axis=ic,
                 name=[f"[C{i}] {path.stem}" for i in range(nchn)],
@@ -320,20 +318,19 @@ class FilamentAnalyzer(MagicTemplate):
             )
 
     @Tools.Layers.wraps
-    @set_options(path={"mode": "d"})
-    def open_filaments(self, path: Path):
+    def open_filaments(self, path: Path.Dir):
         """Open a directory with csv files as a filament layer."""
         import pandas as pd
 
         path = Path(path)
 
-        all_csv: List[np.ndarray] = []
+        all_csv: "list[np.ndarray]" = []
         for p in path.glob("*.csv"):
             df = pd.read_csv(p)
             all_csv.append(df.values)
         self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
 
-    def _load_filament_coordinates(self, data: List[np.ndarray], name: str):
+    def _load_filament_coordinates(self, data: "list[np.ndarray]", name: str):
         ndata = len(data)
         layer_paths = self.parent_viewer.add_shapes(
             data,
@@ -357,7 +354,7 @@ class FilamentAnalyzer(MagicTemplate):
         name = self.target_filaments.name.lstrip("[F] ")
         return self._add_filament_layer(images, name)
 
-    def _add_filament_layer(self, images: List[Image], name: str):
+    def _add_filament_layer(self, images: "list[Image]", name: str):
         """Add a Shapes layer for the target image."""
         # check input images
         ndim: int = _get_unique_value(img.ndim for img in images)
@@ -417,7 +414,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.Import.wraps
     @set_design(text="From ImageJ ROI")
-    def from_roi(self, path: Path):
+    def from_roi(self, path: Path.Read["*.zip;*.roi;;All files (*)"]):
         """Import ImageJ Roi zip file as filaments."""
         from roifile import ROI_TYPE, roiread
 
@@ -445,8 +442,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @Tools.Layers.wraps
-    @set_options(path={"mode": "w"})
-    def save_filaments(self, layer: Shapes, path: Path):
+    def save_filaments(self, layer: Shapes, path: Path.Save):
         """Save a Shapes layer as a directory of CSV files."""
         import datetime
         import json
@@ -462,7 +458,7 @@ class FilamentAnalyzer(MagicTemplate):
         labels = self.parent_viewer.dims.axis_labels
         roi_id = layer.features[ROI_ID]
 
-        ndigits = max(int(np.ceil(np.log10(layer.nshapes))), 2)
+        ndigits = max(len(str(layer.nshapes)), 2)
         # save filaments
         for idx in range(layer.nshapes):
             data: np.ndarray = layer.data[idx]
@@ -791,7 +787,7 @@ class FilamentAnalyzer(MagicTemplate):
         else:
             t0 = time_axis
         ntime = image.data.shape[t0]
-        profiles: List[np.ndarray] = []
+        profiles: "list[np.ndarray]" = []
         for t in range(ntime):
             t1 = t0 + 1
             sl = current_slice[:t0] + (t,) + current_slice[t1:]
@@ -925,7 +921,7 @@ def _split_slice_and_path(
     return tuple(sl.ravel().astype(np.int64)), data[:, -2:]
 
 
-def _get_connected_target_image_layers(shapes: Shapes) -> List[Image]:
+def _get_connected_target_image_layers(shapes: Shapes) -> "list[Image]":
     """Return all connected target image layers."""
     return shapes.metadata.get(TARGET_IMG_LAYERS, [])
 
@@ -940,7 +936,7 @@ def _toggle_target_images(shapes: Shapes, visible: bool):
     shapes.visible = visible
 
 
-def _assert_single_selection(idx: Union[int, Set[int]]) -> int:
+def _assert_single_selection(idx: "int | set[int]") -> int:
     if isinstance(idx, set):
         if len(idx) != 1:
             raise ValueError("Multiple selection")
@@ -948,14 +944,14 @@ def _assert_single_selection(idx: Union[int, Set[int]]) -> int:
     return idx
 
 
-def _arrange_selection(idx: Union[int, Set[int]]) -> List[int]:
+def _arrange_selection(idx: "int | set[int]") -> "list[int]":
     if isinstance(idx, int):
         return [idx]
     else:
         return sorted(list(idx), reverse=True)
 
 
-def _get_image_sources(shapes: Shapes) -> Union[List[str], None]:
+def _get_image_sources(shapes: Shapes) -> "list[str] | None":
     """Extract image sources from a shapes layer."""
     img_layers = _get_connected_target_image_layers(shapes)
     if not img_layers:

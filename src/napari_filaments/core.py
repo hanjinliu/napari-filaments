@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import napari
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from ._widget import FilamentAnalyzer
 
 

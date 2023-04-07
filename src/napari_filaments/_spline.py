@@ -7,7 +7,7 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy.interpolate import splev, splprep
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from typing_extensions import Self
 
     _TCK = tuple[tuple[np.ndarray, list[np.ndarray], int], np.ndarray]

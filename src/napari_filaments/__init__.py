@@ -1,4 +1,4 @@
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 from ._spline import Spline
 from ._widget import FilamentAnalyzer
 from .core import start

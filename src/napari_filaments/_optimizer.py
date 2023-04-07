@@ -8,7 +8,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import curve_fit
 from scipy.special import erf
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from typing_extensions import Self
 
 
@@ -90,7 +90,7 @@ class GaussianOptimizer(Optimizer):
         a: float
         b: float
 
-    if TYPE_CHECKING:
+    if TYPE_CHECKING:  # pragma: no cover
 
         @property
         def params(self) -> Parameters:
@@ -121,7 +121,7 @@ class ErfOptimizer(Optimizer):
         a: float
         b: float
 
-    if TYPE_CHECKING:
+    if TYPE_CHECKING:  # pragma: no cover
 
         @property
         def params(self) -> Parameters:
@@ -164,7 +164,7 @@ class TwosideErfOptimizer(Optimizer):
         b0: float
         b1: float
 
-    if TYPE_CHECKING:
+    if TYPE_CHECKING:  # pragma: no cover
 
         @property
         def params(self) -> Parameters:
