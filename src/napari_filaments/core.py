@@ -8,11 +8,12 @@ if TYPE_CHECKING:  # pragma: no cover
     from ._widget import FilamentAnalyzer
 
 
-def start() -> FilamentAnalyzer:
+def start(viewer: napari.Viewer | None = None) -> FilamentAnalyzer:
     """Lauch viewer with a FilamentAnalyzer widget docked in it."""
     from ._widget import FilamentAnalyzer
 
-    viewer = napari.Viewer()
+    if viewer is None:
+        viewer = napari.Viewer()
     ui = FilamentAnalyzer()
     viewer.window.add_dock_widget(ui)
     return ui

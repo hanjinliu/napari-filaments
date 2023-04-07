@@ -60,7 +60,7 @@ class FilamentAnalyzer(MagicTemplate):
             return []
         return list(range(self.target_filaments.nshapes))
 
-    _tablestack = field(TableStack, name="Filament Analyzer Tables")
+    _tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(Shapes)
     target_image = vfield(Image)
     filament = vfield(OneOf[_get_available_filament_id])

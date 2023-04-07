@@ -4,7 +4,7 @@ import napari
 import numpy as np
 from numpy.testing import assert_allclose
 
-from napari_filaments import FilamentAnalyzer
+from napari_filaments import FilamentAnalyzer, start
 
 IMAGE_PATH = Path(__file__).parent / "image.tif"
 SAVE_PATH = Path(__file__).parent / "result"
@@ -26,6 +26,10 @@ def test_widget(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
 
     assert ui.parent_viewer is not None
+
+
+def test_start():
+    start()
 
 
 def test_fit(make_napari_viewer):
@@ -172,3 +176,32 @@ def test_add_filament_layer(make_napari_viewer):
     assert type(ui.parent_viewer.layers[-1]) is Shapes
     assert type(ui.parent_viewer.layers[-2]) is Shapes
     assert ui.parent_viewer.layers[0].visible
+
+
+def test_extend_and_fit(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+
+    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    image_layer = ui.parent_viewer.layers[0]
+    ui.fit_filament(image_layer)
+
+    ui.clip_left()
+    ui.clip_right()
+    ui.extend_and_fit_left(image_layer)
+    ui.extend_and_fit_right(image_layer)
+
+
+def test_clip_inflection(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+
+    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    image_layer = ui.parent_viewer.layers[0]
+    ui.fit_filament(image_layer)
+
+    ui.extend_left(dx=20)
+    ui.extend_right(dx=20)
+    ui.clip_left_at_inflection(image_layer)
+    ui.clip_right_at_inflection(image_layer)
+    assert abs(ui.get_spline(0).length() - 62.7) < 0.1
