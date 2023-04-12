@@ -48,11 +48,14 @@ class FilamentAnalyzer(MagicTemplate):
 
     Attributes
     ----------
-    target_filament : Shapes
+    target_filaments : Shapes
         The target Shapes layer.
     target_image : Image
         The target Image layer. Fitting/analysis will be performed on this
         layer.
+    filament : int
+        The selected filament ID. Operations such as filament fitting,
+        extension, clipping will be performed on this filament.
     """
 
     def _get_available_filament_id(self, w=None) -> "list[int]":
@@ -63,7 +66,7 @@ class FilamentAnalyzer(MagicTemplate):
     _tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(Shapes)
     target_image = vfield(Image)
-    filament = vfield(OneOf[_get_available_filament_id])
+    filament = vfield(int).with_choices(_get_available_filament_id)
 
     # fmt: off
     @magictoolbar
