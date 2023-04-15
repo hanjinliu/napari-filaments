@@ -103,6 +103,7 @@ class FilamentAnalyzer(MagicTemplate):
                 f"Cannot set type {type(val)} to `last_target_filaments`."
             )
         self._last_target_filaments = weakref.ref(val)
+        return None
 
     @target_filaments.connect
     def _on_change(self):
@@ -129,6 +130,7 @@ class FilamentAnalyzer(MagicTemplate):
         if _fil in cbox.choices:
             cbox.value = _fil
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
+        return None
 
     @filament.connect
     def _on_filament_change(self, idx: int):
@@ -143,6 +145,7 @@ class FilamentAnalyzer(MagicTemplate):
         next_id = self.target_filaments.nshapes
         props[ROI_ID] = next_id
         self.target_filaments.current_properties = props
+        return None
 
     @Tools.Layers.wraps
     def open_image(self, path: Path.Read["*.tif;*.tiff"]):
@@ -168,6 +171,7 @@ class FilamentAnalyzer(MagicTemplate):
             df = pd.read_csv(p)
             all_csv.append(df.values)
         self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
+        return None
 
     @Tools.Layers.wraps
     def add_filaments(self):
@@ -460,7 +464,7 @@ class FilamentAnalyzer(MagicTemplate):
         image: Bound[target_image],
         idx: Bound[_get_idx] = -1,
     ):
-        """Plot intensity profile."""
+        """Plot intensity profile using the selected image layer and the filament."""
         current_slice, spl = self._get_slice_and_spline(idx)
         prof = spl.get_profile(image.data[current_slice])
         length = spl.length()
@@ -479,7 +483,7 @@ class FilamentAnalyzer(MagicTemplate):
         time_axis: OneOf[_get_axes],
         idx: Bound[_get_idx] = -1,
     ):
-        """Plot kymograph."""
+        """Plot kymograph using the selected image layer and the filament."""
         current_slice, spl = self._get_slice_and_spline(idx)
         if isinstance(time_axis, str):
             t0 = image.metadata[IMAGE_AXES].index(time_axis)
@@ -531,6 +535,7 @@ class FilamentAnalyzer(MagicTemplate):
             target_names = [target.name for target in img_layers]
             if all(img_name in target_names for img_name in names):
                 img_layers.append(tot_layer)
+        return None
 
     # TODO: how to save at subpixel resolution?
     # @Tools.Layers.wraps
@@ -592,7 +597,9 @@ class FilamentAnalyzer(MagicTemplate):
 
         new = self.macro.widget.duplicate()
         v = mk.Expr("getattr", [mk.symbol(self), "parent_viewer"])
-        new.value = self.macro.format([(mk.symbol(self.parent_viewer), v)])
+        new.textedit.value = self.macro.format(
+            [(mk.symbol(self.parent_viewer), v)]
+        )
         new.show()
         return None
 
@@ -682,6 +689,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
             filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
         )
+        return None
 
     def _filter_image_choices(self):
         if not self.Tools.Parameters.target_image_filter:
@@ -695,6 +703,7 @@ class FilamentAnalyzer(MagicTemplate):
             target_image_widget.choices = img_layers
             cbox_idx = min(cbox_idx, len(img_layers) - 1)
             target_image_widget.value = target_image_widget.choices[cbox_idx]
+        return None
 
     def _add_image(self, img: np.ndarray, axes: str, path: Path):
         if "C" in axes:
@@ -722,6 +731,7 @@ class FilamentAnalyzer(MagicTemplate):
             self.parent_viewer.dims.set_axis_label(
                 list(range(ndim)), axis_labels
             )
+        return None
 
     def _set_filament_layer(self, new_filaments_layer: Shapes):
         @new_filaments_layer.events.set_data.connect
@@ -778,7 +788,6 @@ class FilamentAnalyzer(MagicTemplate):
             properties={ROI_ID: 0},
             text=dict(string=ROI_FMT, color="white", size=8),
         )
-
         return self._set_filament_layer(layer)
 
     def _get_slice_and_spline(
