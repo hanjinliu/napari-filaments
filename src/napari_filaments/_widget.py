@@ -1,6 +1,7 @@
 import re
 import weakref
 from typing import TYPE_CHECKING, Iterable, List, Tuple, TypeVar
+from typing_extensions import Annotated
 
 import numpy as np
 from magicclass import (
@@ -717,7 +718,8 @@ class FilamentAnalyzer(MagicTemplate):
         self,
         image: Bound[target_image],
         properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
-        slices: bool = False,
+        slices: Annotated[bool, {"label": "Record slice numbers"}] = False,
+        multi_measure: str = "",
     ):
         """Measure properties of all the splines."""
         import pandas as pd
@@ -770,7 +772,7 @@ class FilamentAnalyzer(MagicTemplate):
         prof = spl.get_profile(image.data[current_slice])
         length = spl.length()
         x = np.linspace(0, 1, int(length)) * length
-        self.Output._plot(x, prof)
+        self.Output._plot(x, prof, color=_cmap_to_color(image))
         self.Output._set_labels("Position (px)", "Intensity")
 
     def _get_axes(self, w=None):
@@ -798,7 +800,7 @@ class FilamentAnalyzer(MagicTemplate):
             profiles.append(prof)
         kymo = np.stack(profiles, axis=0)
         plt = Figure()
-        plt.imshow(kymo, cmap="gray")
+        plt.imshow(kymo, cmap=_cmap_to_mpl_cmap(image))
         plt.show()
         return None
 
@@ -977,3 +979,17 @@ def _get_unique_value(vals: Iterable[_V]) -> _V:
     if len(s) != 1:
         raise ValueError(f"Not a unique value: {s}")
     return next(iter(s))
+
+
+def _cmap_to_color(image: Image) -> np.ndarray:
+    """Convert colormap to color."""
+    cmap = image.colormap
+    return cmap.map(1)
+
+
+def _cmap_to_mpl_cmap(image: Image, name="no-name"):
+    """Convert colormap to matplotlib colormap."""
+    from matplotlib.colors import LinearSegmentedColormap
+
+    cmap = image.colormap
+    return LinearSegmentedColormap.from_list("custom", cmap.colors)
