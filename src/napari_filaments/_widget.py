@@ -10,18 +10,16 @@ from magicclass import (
     do_not_record,
     field,
     magicclass,
-    magicmenu,
-    magictoolbar,
     nogui,
     set_design,
     set_options,
     vfield,
 )
 from magicclass.types import Bound, OneOf, SomeOf, Path
-from magicclass.widgets import Figure, Separator
+from magicclass.widgets import Figure
 from napari.layers import Image, Shapes
 
-from . import _optimizer as _opt
+from . import _optimizer as _opt, _subwidgets
 from ._spline import Measurement, Spline
 from ._table_stack import TableStack
 from ._types import weight
@@ -69,137 +67,14 @@ class FilamentAnalyzer(MagicTemplate):
     target_image = vfield(Image)
     filament = vfield(int).with_choices(_get_available_filament_id)
 
-    # fmt: off
-    @magictoolbar
-    class Tools(MagicTemplate):
-        @magicmenu
-        class Layers(MagicTemplate):
-            def open_image(self): ...
-            def open_filaments(self): ...
-            def add_filaments(self): ...
-
-            @magicmenu
-            class Import(MagicTemplate):
-                def from_roi(self): ...
-            sep0 = field(Separator)
-            def save_filaments(self): ...
-            sep1 = field(Separator)
-            def create_total_intensity(self): ...
-            # def export_roi(self): ...
-
-        @magicmenu
-        class Parameters(MagicTemplate):
-            """
-            Global parameters of Filament Analyzer.
-
-            Attributes
-            ----------
-            lattice_width : int
-                The width of the image lattice along a filament. Larger value
-                increases filament search range but neighbor filaments may
-                affect.
-            dx : float
-                Δx of filament clipping and extension.
-            sigma_range : (float, float)
-                The range of sigma to be used for fitting to error function.
-                This parameter does not affect fitting results. You'll be
-                warned if the fitting result was out of this range.
-            target_image_filter : bool
-                If true, the choice of target image is filtered for each
-                filament layer so that only relevant layers will be shown.
-            """
-            lattice_width = vfield(17, options={"min": 5, "max": 49}, record=False)  # noqa
-            dx = vfield(5.0, options={"min": 1, "max": 50.0}, record=False)
-            sigma_range = vfield((0.5, 5.0), record=False)
-            target_image_filter = vfield(True, record=False)
-
-        @magicmenu
-        class Others(MagicTemplate):
-            def create_macro(self): ...
-            def send_widget_to_viewer(self): ...
-
-    @magicclass(widget_type="tabbed")
-    class Tabs(MagicTemplate):
-        @magicclass(layout="horizontal")
-        class Spline(MagicTemplate):
-            def __post_init__(self):
-                self.margins = (2, 2, 2, 2)
-
-            @magicclass(widget_type="groupbox")
-            class Left(MagicTemplate):
-                def extend_left(self): ...
-                def extend_and_fit_left(self): ...
-                def clip_left(self): ...
-                def clip_left_at_inflection(self): ...
-
-            @magicclass(widget_type="frame")
-            class Both(MagicTemplate):
-                def fit_filament(self): ...
-                def delete_current(self): ...
-                def undo_spline(self): ...
-                def clip_at_inflections(self): ...
-
-            @magicclass(widget_type="groupbox")
-            class Right(MagicTemplate):
-                def extend_right(self): ...
-                def extend_and_fit_right(self): ...
-                def clip_right(self): ...
-                def clip_right_at_inflection(self): ...
-
-        @magicclass(widget_type="scrollable")
-        class Measure(MagicTemplate):
-            def measure_properties(self): ...
-            def plot_profile(self): ...
-            def plot_curvature(self): ...
-            def kymograph(self): ...
-
-    # fmt: on
-
-    @magicclass
-    class Output(MagicTemplate):
-        plt = field(Figure)
-
-        def __post_init__(self):
-            self._xdata = []
-            self._ydata = []
-            self.min_height = 200
-
-        @do_not_record
-        def view_data(self):
-            """View plot data in a table."""
-            xlabel = self.plt.ax.get_xlabel() or "x"
-            ylabel = self.plt.ax.get_ylabel() or "y"
-            if isinstance(self._ydata, list):
-                data = {xlabel: self._xdata}
-                for i, y in enumerate(self._ydata):
-                    data[f"{ylabel}-{i}"] = y
-            else:
-                data = {xlabel: self._xdata, ylabel: self._ydata}
-            tstack = self.find_ancestor(FilamentAnalyzer)._tablestack
-            tstack.add_table(data, name="Plot data")
-            tstack.show()
-
-        def _plot(self, x, y, clear=True, **kwargs):
-            if clear:
-                self.plt.cla()
-            self.plt.plot(x, y, **kwargs)
-            self._xdata = x
-            if clear:
-                self._ydata = y
-            else:
-                if isinstance(self._ydata, list):
-                    self._ydata.append(y)
-                else:
-                    self._ydata = [self._ydata, y]
-
-        def _set_labels(self, x: str, y: str):
-            self.plt.xlabel(x)
-            self.plt.ylabel(y)
+    Tabs = _subwidgets.Tabs
+    Tools = _subwidgets.Tools
+    Output = _subwidgets.Output
 
     def __init__(self):
         self._last_target_filaments = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
-        self._last_data: Tuple[int, np.ndarray] = None
+        self._last_data: "tuple[int, np.ndarray] | None" = None
         self._dims_slider_changing = False
         self._nfilaments = 0
 
@@ -269,19 +144,6 @@ class FilamentAnalyzer(MagicTemplate):
         props[ROI_ID] = next_id
         self.target_filaments.current_properties = props
 
-    def _filter_image_choices(self):
-        if not self.Tools.Parameters.target_image_filter:
-            return
-        target_image_widget: ComboBox = self["target_image"]
-        if target_image_widget.value is None:
-            return
-        cbox_idx = target_image_widget.choices.index(target_image_widget.value)
-        img_layers = _get_connected_target_image_layers(self.target_filaments)
-        if len(img_layers) > 0:
-            target_image_widget.choices = img_layers
-            cbox_idx = min(cbox_idx, len(img_layers) - 1)
-            target_image_widget.value = target_image_widget.choices[cbox_idx]
-
     @Tools.Layers.wraps
     def open_image(self, path: Path.Read["*.tif;*.tiff"]):
         """Open a TIF."""
@@ -293,33 +155,6 @@ class FilamentAnalyzer(MagicTemplate):
             axes = getattr(series0, "axes", "")
             img: np.ndarray = tif.asarray()
         return self._add_image(img, axes, path)
-
-    def _add_image(self, img: np.ndarray, axes: str, path: Path):
-        if "C" in axes:
-            ic = axes.find("C")
-            nchn = img.shape[ic]
-            axis_labels: "tuple[str, ...]" = tuple(c for c in axes if c != "C")
-            img_layers: "list[Image]" = self.parent_viewer.add_image(
-                img,
-                channel_axis=ic,
-                name=[f"[C{i}] {path.stem}" for i in range(nchn)],
-                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
-            )
-        else:
-            axis_labels = tuple(axes)
-            _layer = self.parent_viewer.add_image(
-                img,
-                name=path.stem,
-                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
-            )
-            img_layers = [_layer]
-
-        self._add_filament_layer(img_layers, path.stem)
-        ndim = self.parent_viewer.dims.ndim
-        if ndim == len(axis_labels):
-            self.parent_viewer.dims.set_axis_label(
-                list(range(ndim)), axis_labels
-            )
 
     @Tools.Layers.wraps
     def open_filaments(self, path: Path.Dir):
@@ -334,87 +169,11 @@ class FilamentAnalyzer(MagicTemplate):
             all_csv.append(df.values)
         self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
 
-    def _load_filament_coordinates(self, data: "list[np.ndarray]", name: str):
-        ndata = len(data)
-        layer_paths = self.parent_viewer.add_shapes(
-            data,
-            edge_color=self._color_default,
-            name=name,
-            shape_type="path",
-            edge_width=0.5,
-            properties={ROI_ID: np.arange(ndata, dtype=np.uint32)},
-            text=dict(string=ROI_FMT, color="white", size=8),
-        )
-
-        self._set_filament_layer(layer_paths)
-        layer_paths.current_properties = {ROI_ID: ndata}
-        self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
-            filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
-        )
-
     @Tools.Layers.wraps
     def add_filaments(self):
         images = self.target_filaments.metadata[TARGET_IMG_LAYERS]
         name = self.target_filaments.name.lstrip("[F] ")
         return self._add_filament_layer(images, name)
-
-    def _add_filament_layer(self, images: "list[Image]", name: str):
-        """Add a Shapes layer for the target image."""
-        # check input images
-        ndim: int = _get_unique_value(img.ndim for img in images)
-        axes: Tuple[str] = _get_unique_value(
-            img.metadata[IMAGE_AXES] for img in images
-        )
-        layer = self.parent_viewer.add_shapes(
-            ndim=ndim,
-            edge_color=self._color_default,
-            name=f"[F] {name}",
-            metadata={IMAGE_AXES: axes, TARGET_IMG_LAYERS: images},
-            edge_width=0.5,
-            properties={ROI_ID: 0},
-            text=dict(string=ROI_FMT, color="white", size=8),
-        )
-
-        return self._set_filament_layer(layer)
-
-    def _set_filament_layer(self, new_filaments_layer: Shapes):
-        @new_filaments_layer.events.set_data.connect
-        def _on_data_changed(e):
-            if (
-                self.target_filaments is not new_filaments_layer
-                or self.target_filaments._is_moving
-                or self._dims_slider_changing
-            ):
-                return
-            # delete undo history
-            self._last_data = None
-
-            # update current filament ROI ID
-            next_id = self.target_filaments.nshapes
-            if self._nfilaments >= next_id:
-                features = self.target_filaments.features
-                features[ROI_ID] = np.arange(next_id)
-                self.target_filaments.features = features
-            props = self.target_filaments.current_properties
-            props[ROI_ID] = next_id
-            self.target_filaments.current_properties = props
-            self["filament"].reset_choices()
-            next_id = self.target_filaments.nshapes
-            try:
-                self.filament = next_id - 1
-            except Exception:
-                pass
-
-            self._nfilaments = next_id
-
-        new_filaments_layer.current_properties = {ROI_ID: 0}
-        self.target_filaments = new_filaments_layer
-        if self.last_target_filaments is None:
-            self.last_target_filaments = new_filaments_layer
-
-        new_filaments_layer.mode = "add_path"
-
-        return new_filaments_layer
 
     @Tools.Layers.Import.wraps
     @set_design(text="From ImageJ ROI")
@@ -488,32 +247,6 @@ class FilamentAnalyzer(MagicTemplate):
             json.dump(info, f, indent=2)
         return None
 
-    def _update_paths(
-        self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
-    ):
-        if idx < 0:
-            idx += self.target_filaments.nshapes
-        if spl.length() > 1000:
-            raise ValueError("Spline is too long.")
-        sampled = spl.sample(interval=1.0)
-        if current_slice:
-            sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
-            sampled = np.concatenate([sl, sampled], axis=1)
-
-        hist = self.target_filaments.data[idx]
-        self._replace_data(idx, sampled)
-        self._last_data = (idx, hist)
-        return None
-
-    def _fit_i_2d(self, width, img, coords) -> Spline:
-        spl = Spline.fit(coords, degree=1, err=0.0)
-        length = spl.length()
-        interv = min(8.0, length / 4)
-        rough = spl.fit_filament(
-            img, width=width, interval=interv, spline_error=0.0
-        )
-        return rough.fit_filament(img, width=7, spline_error=3e-2)
-
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "fit.png")
     @bind_key("F1")
@@ -535,16 +268,6 @@ class FilamentAnalyzer(MagicTemplate):
             self._update_paths(i, fit, current_slice)
         return None
 
-    def _get_slice_and_spline(
-        self, idx: int
-    ) -> Tuple[Tuple[int, ...], Spline]:
-        data: np.ndarray = self.target_filaments.data[idx]
-        current_slice, data = _split_slice_and_path(data)
-        if data.shape[0] < 4:
-            data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
-        spl = Spline.fit(data, err=0.0)
-        return current_slice, spl
-
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "undo.png")
     def undo_spline(self):
@@ -552,15 +275,6 @@ class FilamentAnalyzer(MagicTemplate):
         if self._last_data is None:
             return
         return self._replace_data(*self._last_data)
-
-    def _replace_data(self, idx: int, new_data: np.ndarray):
-        """Replace the idx-th data to the new one."""
-        data = self.target_filaments.data
-        data[idx] = new_data
-        self.target_filaments.data = data
-        self._last_data = None
-        self.filament = idx
-        return None
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
@@ -691,28 +405,6 @@ class FilamentAnalyzer(MagicTemplate):
             self._update_paths(i, out, current_slice)
         return None
 
-    def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
-        """Callback function for error function fitting"""
-        sg_min, sg_max = self.Tools.Parameters.sigma_range
-        if isinstance(opt, (_opt.GaussianOptimizer, _opt.ErfOptimizer)):
-            valid = sg_min <= opt.params.sg <= sg_max
-        elif isinstance(opt, _opt.TwosideErfOptimizer):
-            valid0 = sg_min <= opt.params.sg0 <= sg_max
-            valid1 = sg_min <= opt.params.sg1 <= sg_max
-            valid = valid0 and valid1
-        else:
-            raise NotImplementedError
-        ndata = prof.size
-        xdata = np.arange(ndata)
-        ydata = opt.sample(xdata)
-        self.Output._plot(xdata, prof, color="gray", alpha=0.7, lw=1)
-        self.Output._plot(xdata, ydata, clear=False, color="red", lw=2)
-        if not valid:
-            self.Output.plt.text(
-                0, np.min(ydata), "Sigma out of range.", color="crimson"
-            )
-        return self.Output._set_labels("Data points", "Intensity")
-
     @Tabs.Measure.wraps
     def measure_properties(
         self,
@@ -760,6 +452,7 @@ class FilamentAnalyzer(MagicTemplate):
         cv = spl.curvature(x)
         self.Output._plot(x * length, cv)
         self.Output._set_labels("Position (px)", "Curvature")
+        return None
 
     @Tabs.Measure.wraps
     def plot_profile(
@@ -774,6 +467,7 @@ class FilamentAnalyzer(MagicTemplate):
         x = np.linspace(0, 1, int(length)) * length
         self.Output._plot(x, prof, color=_cmap_to_color(image))
         self.Output._set_labels("Position (px)", "Intensity")
+        return None
 
     def _get_axes(self, w=None):
         return self.parent_viewer.dims.axis_labels[:-2]
@@ -914,10 +608,193 @@ class FilamentAnalyzer(MagicTemplate):
         _, spl = self._get_slice_and_spline(idx)
         return spl
 
+    def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
+        """Callback function for error function fitting"""
+        sg_min, sg_max = self.Tools.Parameters.sigma_range
+        if isinstance(opt, (_opt.GaussianOptimizer, _opt.ErfOptimizer)):
+            valid = sg_min <= opt.params.sg <= sg_max
+        elif isinstance(opt, _opt.TwosideErfOptimizer):
+            valid0 = sg_min <= opt.params.sg0 <= sg_max
+            valid1 = sg_min <= opt.params.sg1 <= sg_max
+            valid = valid0 and valid1
+        else:
+            raise NotImplementedError
+        ndata = prof.size
+        xdata = np.arange(ndata)
+        ydata = opt.sample(xdata)
+        self.Output._plot(xdata, prof, color="gray", alpha=0.7, lw=1)
+        self.Output._plot(xdata, ydata, clear=False, color="red", lw=2)
+        if not valid:
+            self.Output.plt.text(
+                0, np.min(ydata), "Sigma out of range.", color="crimson"
+            )
+        return self.Output._set_labels("Data points", "Intensity")
+
+    def _replace_data(self, idx: int, new_data: np.ndarray):
+        """Replace the idx-th data to the new one."""
+        data = self.target_filaments.data
+        data[idx] = new_data
+        self.target_filaments.data = data
+        self._last_data = None
+        self.filament = idx
+        return None
+
+    def _update_paths(
+        self, idx: int, spl: Spline, current_slice: Tuple[int, ...] = ()
+    ):
+        if idx < 0:
+            idx += self.target_filaments.nshapes
+        if spl.length() > 1000:
+            raise ValueError("Spline is too long.")
+        sampled = spl.sample(interval=1.0)
+        if current_slice:
+            sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
+            sampled = np.concatenate([sl, sampled], axis=1)
+
+        hist = self.target_filaments.data[idx]
+        self._replace_data(idx, sampled)
+        self._last_data = (idx, hist)
+        return None
+
+    def _fit_i_2d(self, width, img, coords) -> Spline:
+        spl = Spline.fit(coords, degree=1, err=0.0)
+        length = spl.length()
+        interv = min(8.0, length / 4)
+        rough = spl.fit_filament(
+            img, width=width, interval=interv, spline_error=0.0
+        )
+        return rough.fit_filament(img, width=7, spline_error=3e-2)
+
+    def _load_filament_coordinates(self, data: "list[np.ndarray]", name: str):
+        ndata = len(data)
+        layer_paths = self.parent_viewer.add_shapes(
+            data,
+            edge_color=self._color_default,
+            name=name,
+            shape_type="path",
+            edge_width=0.5,
+            properties={ROI_ID: np.arange(ndata, dtype=np.uint32)},
+            text=dict(string=ROI_FMT, color="white", size=8),
+        )
+
+        self._set_filament_layer(layer_paths)
+        layer_paths.current_properties = {ROI_ID: ndata}
+        self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
+            filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
+        )
+
+    def _filter_image_choices(self):
+        if not self.Tools.Parameters.target_image_filter:
+            return
+        target_image_widget: ComboBox = self["target_image"]
+        if target_image_widget.value is None:
+            return
+        cbox_idx = target_image_widget.choices.index(target_image_widget.value)
+        img_layers = _get_connected_target_image_layers(self.target_filaments)
+        if len(img_layers) > 0:
+            target_image_widget.choices = img_layers
+            cbox_idx = min(cbox_idx, len(img_layers) - 1)
+            target_image_widget.value = target_image_widget.choices[cbox_idx]
+
+    def _add_image(self, img: np.ndarray, axes: str, path: Path):
+        if "C" in axes:
+            ic = axes.find("C")
+            nchn = img.shape[ic]
+            axis_labels: "tuple[str, ...]" = tuple(c for c in axes if c != "C")
+            img_layers: "list[Image]" = self.parent_viewer.add_image(
+                img,
+                channel_axis=ic,
+                name=[f"[C{i}] {path.stem}" for i in range(nchn)],
+                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
+            )
+        else:
+            axis_labels = tuple(axes)
+            _layer = self.parent_viewer.add_image(
+                img,
+                name=path.stem,
+                metadata={IMAGE_AXES: axis_labels, SOURCE: path},
+            )
+            img_layers = [_layer]
+
+        self._add_filament_layer(img_layers, path.stem)
+        ndim = self.parent_viewer.dims.ndim
+        if ndim == len(axis_labels):
+            self.parent_viewer.dims.set_axis_label(
+                list(range(ndim)), axis_labels
+            )
+
+    def _set_filament_layer(self, new_filaments_layer: Shapes):
+        @new_filaments_layer.events.set_data.connect
+        def _on_data_changed(e):
+            if (
+                self.target_filaments is not new_filaments_layer
+                or self.target_filaments._is_moving
+                or self._dims_slider_changing
+            ):
+                return
+            # delete undo history
+            self._last_data = None
+
+            # update current filament ROI ID
+            next_id = self.target_filaments.nshapes
+            if self._nfilaments >= next_id:
+                features = self.target_filaments.features
+                features[ROI_ID] = np.arange(next_id)
+                self.target_filaments.features = features
+            props = self.target_filaments.current_properties
+            props[ROI_ID] = next_id
+            self.target_filaments.current_properties = props
+            self["filament"].reset_choices()
+            next_id = self.target_filaments.nshapes
+            try:
+                self.filament = next_id - 1
+            except Exception:
+                pass
+
+            self._nfilaments = next_id
+
+        new_filaments_layer.current_properties = {ROI_ID: 0}
+        self.target_filaments = new_filaments_layer
+        if self.last_target_filaments is None:
+            self.last_target_filaments = new_filaments_layer
+
+        new_filaments_layer.mode = "add_path"
+
+        return new_filaments_layer
+
+    def _add_filament_layer(self, images: "list[Image]", name: str):
+        """Add a Shapes layer for the target image."""
+        # check input images
+        ndim: int = _get_unique_value(img.ndim for img in images)
+        axes: "tuple[str]" = _get_unique_value(
+            img.metadata[IMAGE_AXES] for img in images
+        )
+        layer = self.parent_viewer.add_shapes(
+            ndim=ndim,
+            edge_color=self._color_default,
+            name=f"[F] {name}",
+            metadata={IMAGE_AXES: axes, TARGET_IMG_LAYERS: images},
+            edge_width=0.5,
+            properties={ROI_ID: 0},
+            text=dict(string=ROI_FMT, color="white", size=8),
+        )
+
+        return self._set_filament_layer(layer)
+
+    def _get_slice_and_spline(
+        self, idx: int
+    ) -> "tuple[tuple[int, ...], Spline]":
+        data: np.ndarray = self.target_filaments.data[idx]
+        current_slice, data = _split_slice_and_path(data)
+        if data.shape[0] < 4:
+            data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
+        spl = Spline.fit(data, err=0.0)
+        return current_slice, spl
+
 
 def _split_slice_and_path(
     data: np.ndarray,
-) -> Tuple[Tuple[int, ...], np.ndarray]:
+) -> "tuple[tuple[int, ...], np.ndarray]":
     if data.shape[1] == 2:
         return (), data
     sl: np.ndarray = np.unique(data[:, :-2], axis=0)
