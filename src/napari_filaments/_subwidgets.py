@@ -77,8 +77,12 @@ class Tabs(MagicTemplate):
         @magicclass(widget_type="frame")
         class Both(MagicTemplate):
             fit_filament = abstractapi()
-            delete_current = abstractapi()
-            undo_spline = abstractapi()
+            delete_filament = abstractapi()
+            @magicclass(layout="horizontal", properties={"margins": (0, 0, 0, 0)})
+            class VBox(MagicTemplate):
+                undo = abstractapi()
+                redo = abstractapi()
+
             clip_at_inflections = abstractapi()
 
         @magicclass(widget_type="groupbox")

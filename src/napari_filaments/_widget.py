@@ -15,27 +15,28 @@ from magicclass import (
     vfield,
 )
 from magicclass.types import OneOf, SomeOf, Path
+from magicclass.undo import undo_callback
 from magicclass.widgets import Figure
 import napari
-from napari.layers import Image, Shapes
+from napari.layers import Image
 
 from . import _optimizer as _opt, _subwidgets
 from ._spline import Measurement, Spline
 from ._table_stack import TableStack
 from ._types import weight
+from ._custom_layers import FilamentsLayer
+from ._consts import ROI_ID, TARGET_IMG_LAYERS, IMAGE_AXES, SOURCE
 
 if TYPE_CHECKING:  # pragma: no cover
     from magicgui.widgets import ComboBox
 
 ICON_DIR = Path(__file__).parent / "_icon"
-ICON_KWARGS = dict(text="", min_width=42, min_height=42)
-
-# global metadata keys
-TARGET_IMG_LAYERS = "target-image-layer"
-
-ROI_ID = "ROI-ID"
-SOURCE = "source"
-IMAGE_AXES = "axes"
+ICON_KWARGS = dict(
+    text="", min_width=42, min_height=42, max_width=45, max_height=45
+)
+SMALL_ICON_KWARGS = dict(
+    text="", min_width=20, min_height=20, max_width=21, max_height=21
+)
 
 ROI_FMT = "[{" + ROI_ID + "}]"
 
@@ -63,7 +64,7 @@ class FilamentAnalyzer(MagicTemplate):
         return list(range(self.target_filaments.nshapes))
 
     _tablestack = field(TableStack, name="_Filament Analyzer Tables")
-    target_filaments = vfield(Shapes, record=False)
+    target_filaments = vfield(FilamentsLayer, record=False)
     target_image = vfield(Image, record=False)
     filament = vfield(int, record=False).with_choices(
         _get_available_filament_id
@@ -76,7 +77,6 @@ class FilamentAnalyzer(MagicTemplate):
     def __init__(self):
         self._last_target_filaments = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
-        self._last_data: "tuple[int, np.ndarray] | None" = None
         self._dims_slider_changing = False
         self._nfilaments = 0
         self.objectName()  # activate napari namespace
@@ -90,18 +90,18 @@ class FilamentAnalyzer(MagicTemplate):
         return sel
 
     @property
-    def last_target_filaments(self) -> "Shapes | None":
+    def last_target_filaments(self) -> "FilamentsLayer | None":
         if self._last_target_filaments is None:
             return None
         return self._last_target_filaments()
 
     @last_target_filaments.setter
-    def last_target_filaments(self, val: "Shapes | None"):
+    def last_target_filaments(self, val: "FilamentsLayer | None"):
         if val is None:
             self._last_target_filaments = None
             return
 
-        if not isinstance(val, Shapes):
+        if not isinstance(val, FilamentsLayer):
             raise TypeError(
                 f"Cannot set type {type(val)} to `last_target_filaments`."
             )
@@ -119,7 +119,6 @@ class FilamentAnalyzer(MagicTemplate):
         else:
             _mode = "pan_zoom"
 
-        self._last_data = None
         _toggle_target_images(self.target_filaments, True)
         self.last_target_filaments = self.target_filaments
         self.parent_viewer.layers.selection = {self.target_filaments}
@@ -212,7 +211,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @Tools.Layers.wraps
-    def save_filaments(self, layer: Shapes, path: Path.Save):
+    def save_filaments(self, layer: FilamentsLayer, path: Path.Save):
         """Save a Shapes layer as a directory of CSV files."""
         import datetime
         import json
@@ -271,16 +270,21 @@ class FilamentAnalyzer(MagicTemplate):
             data: np.ndarray = self.target_filaments.data[i]
             current_slice, data = _split_slice_and_path(data)
             fit = self._fit_i_2d(width, image.data[current_slice], data)
-            self._update_paths(i, fit, current_slice)
-        return None
+        return self._update_paths(idx, fit, current_slice)
 
-    @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "undo.png")
-    def undo_spline(self):
-        """Undo the last spline fit."""
-        if self._last_data is None:
-            return
-        return self._replace_data(*self._last_data)
+    @Tabs.Spline.Both.VBox.wraps
+    @set_design(**SMALL_ICON_KWARGS, icon=ICON_DIR / "undo.png")
+    @do_not_record(recursive=False)
+    def undo(self):
+        """Undo the last operation."""
+        return self.macro.undo()
+
+    @Tabs.Spline.Both.VBox.wraps
+    @set_design(**SMALL_ICON_KWARGS, icon=ICON_DIR / "redo.png")
+    @do_not_record(recursive=False)
+    def redo(self):
+        """Redo the last spline fit."""
+        return self.macro.redo()
 
     @Tabs.Spline.Left.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
@@ -537,7 +541,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         # update target images
         for layer in self.parent_viewer.layers:
-            if not isinstance(layer, Shapes):
+            if not isinstance(layer, FilamentsLayer):
                 continue
             # if all the input images belongs to the same shapes layer, update
             # the target image list.
@@ -550,7 +554,7 @@ class FilamentAnalyzer(MagicTemplate):
     # TODO: how to save at subpixel resolution?
     # @Tools.Layers.wraps
     # @set_options(path={"mode": "w", "filter": ".zip"})
-    # def export_roi(self, layer: Shapes, path: Path):
+    # def export_roi(self, layer: FilamentsLayer, path: Path):
     #     """Export filament layer as a ImageJ ROI.zip file."""
     #
     #     from roifile import roiwrite, ImagejRoi, ROI_TYPE, ROI_OPTIONS
@@ -586,18 +590,28 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tabs.Spline.Both.wraps
     @set_design(**ICON_KWARGS, icon=ICON_DIR / "del.png")
-    def delete_current(self, idx: Annotated[int, {"bind": _get_idx}]):
+    def delete_filament(self, idx: Annotated[int, {"bind": _get_idx}]):
         """Delete selected (or the last) path."""
         if isinstance(idx, int):
             idx = {idx}
-        self.target_filaments.selected_data = idx
-        self.target_filaments.remove_selected()
-        if len(idx) == 1 and self.target_filaments.nshapes > 0:
-            self.filament = min(
-                list(idx)[0], len(self.target_filaments.data) - 1
-            )
-            self.target_filaments.selected_data = {self.filament}
-        return None
+        layer = self.target_filaments
+        layer.selected_data = idx
+        data_info = {i: layer.data[i] for i in idx}
+        layer.remove_selected()
+        if len(idx) == 1 and layer.nshapes > 0:
+            self.filament = min(list(idx)[0], len(layer.data) - 1)
+            layer.selected_data = {self.filament}
+
+        @undo_callback
+        def _undo():
+            shapes = layer.data
+            for i, d in sorted(
+                data_info.items(), key=lambda x: x[0], reverse=True
+            ):
+                shapes.insert(i, d)
+            layer.data = shapes
+
+        return _undo
 
     @Tools.Others.wraps
     @do_not_record
@@ -632,6 +646,23 @@ class FilamentAnalyzer(MagicTemplate):
         _, spl = self._get_slice_and_spline(idx)
         return spl
 
+    @nogui
+    def add_filament_data(self, layer: FilamentsLayer, data: np.ndarray):
+        data = data.round(2)
+        with layer.data_added.blocked():
+            layer.add_paths(data)
+
+        @undo_callback
+        def _undo():
+            layer.data = layer.data[:-1]
+
+        @_undo.with_redo
+        def _undo():
+            with layer.data_added.blocked():
+                layer.add_paths(data)
+
+        return _undo
+
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
         """Callback function for error function fitting"""
         sg_min, sg_max = self.Tools.Parameters.sigma_range
@@ -659,7 +690,6 @@ class FilamentAnalyzer(MagicTemplate):
         data = self.target_filaments.data
         data[idx] = new_data
         self.target_filaments.data = data
-        self._last_data = None
         self.filament = idx
         return None
 
@@ -675,12 +705,22 @@ class FilamentAnalyzer(MagicTemplate):
             sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
             sampled = np.concatenate([sl, sampled], axis=1)
 
-        hist = self.target_filaments.data[idx]
+        old_data = self.target_filaments.data[idx]
         self._replace_data(idx, sampled)
-        self._last_data = (idx, hist)
-        return None
 
-    def _fit_i_2d(self, width, img, coords) -> Spline:
+        @undo_callback
+        def _out():
+            self._replace_data(idx, old_data)
+
+        @_out.with_redo
+        def _out():
+            self._replace_data(idx, sampled)
+
+        return _out
+
+    def _fit_i_2d(
+        self, width: float, img: np.ndarray, coords: np.ndarray
+    ) -> Spline:
         spl = Spline.fit(coords, degree=1, err=0.0)
         length = spl.length()
         interv = min(8.0, length / 4)
@@ -691,7 +731,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     def _load_filament_coordinates(self, data: "list[np.ndarray]", name: str):
         ndata = len(data)
-        layer_paths = self.parent_viewer.add_shapes(
+        layer = FilamentsLayer(
             data,
             edge_color=self._color_default,
             name=name,
@@ -700,9 +740,10 @@ class FilamentAnalyzer(MagicTemplate):
             properties={ROI_ID: np.arange(ndata, dtype=np.uint32)},
             text=dict(string=ROI_FMT, color="white", size=8),
         )
+        self.parent_viewer.add_layer(layer)
 
-        self._set_filament_layer(layer_paths)
-        layer_paths.current_properties = {ROI_ID: ndata}
+        self._set_filament_layer(layer)
+        layer.current_properties = {ROI_ID: ndata}
         self.target_filaments.metadata[TARGET_IMG_LAYERS] = list(
             filter(lambda x: isinstance(x, Image), self.parent_viewer.layers)
         )
@@ -750,54 +791,36 @@ class FilamentAnalyzer(MagicTemplate):
             )
         return None
 
-    def _set_filament_layer(self, new_filaments_layer: Shapes):
-        @new_filaments_layer.events.set_data.connect
-        def _on_data_changed(e):
-            if (
-                self.target_filaments is not new_filaments_layer
-                or self.target_filaments._is_moving
-                or self._dims_slider_changing
-            ):
-                return
-            # delete undo history
-            self._last_data = None
-            print(e)
-
-            # update current filament ROI ID
-            next_id = self.target_filaments.nshapes
-            if self._nfilaments >= next_id:
-                features = self.target_filaments.features
-                features[ROI_ID] = np.arange(next_id)
-                self.target_filaments.features = features
-            props = self.target_filaments.current_properties
-            props[ROI_ID] = next_id
-            self.target_filaments.current_properties = props
+    def _set_filament_layer(self, new_filaments_layer: FilamentsLayer):
+        @new_filaments_layer.data_added.connect
+        @new_filaments_layer.data_removed.connect
+        def _on_data_added():
             self["filament"].reset_choices()
-            next_id = self.target_filaments.nshapes
-            try:
-                self.filament = next_id - 1
-            except Exception:
-                pass
 
-            self._nfilaments = next_id
-
-        new_filaments_layer.current_properties = {ROI_ID: 0}
-        self.target_filaments = new_filaments_layer
-        if self.last_target_filaments is None:
-            self.last_target_filaments = new_filaments_layer
+        @new_filaments_layer.draw_finished.connect
+        def _on_data_add_finished():
+            with (
+                new_filaments_layer.draw_finished.blocked(),
+                new_filaments_layer.data_added.blocked(),
+                new_filaments_layer.data_removed.blocked(),
+            ):
+                added_data = new_filaments_layer.data[-1]
+                new_filaments_layer.data = new_filaments_layer.data[:-1]
+                self.add_filament_data(new_filaments_layer, added_data)
+            self["filament"].reset_choices()
 
         new_filaments_layer.mode = "add_path"
 
         return new_filaments_layer
 
     def _add_filament_layer(self, images: "list[Image]", name: str):
-        """Add a Shapes layer for the target image."""
+        """Add a Filaments layer for the target image."""
         # check input images
         ndim: int = _get_unique_value(img.ndim for img in images)
         axes: "tuple[str]" = _get_unique_value(
             img.metadata[IMAGE_AXES] for img in images
         )
-        layer = self.parent_viewer.add_shapes(
+        layer = FilamentsLayer(
             ndim=ndim,
             edge_color=self._color_default,
             name=f"[F] {name}",
@@ -806,6 +829,7 @@ class FilamentAnalyzer(MagicTemplate):
             properties={ROI_ID: 0},
             text=dict(string=ROI_FMT, color="white", size=8),
         )
+        self.parent_viewer.add_layer(layer)
         return self._set_filament_layer(layer)
 
     def _get_slice_and_spline(
@@ -830,12 +854,14 @@ def _split_slice_and_path(
     return tuple(sl.ravel().astype(np.int64)), data[:, -2:]
 
 
-def _get_connected_target_image_layers(shapes: Shapes) -> "list[Image]":
+def _get_connected_target_image_layers(
+    shapes: FilamentsLayer,
+) -> "list[Image]":
     """Return all connected target image layers."""
     return shapes.metadata.get(TARGET_IMG_LAYERS, [])
 
 
-def _toggle_target_images(shapes: Shapes, visible: bool):
+def _toggle_target_images(shapes: FilamentsLayer, visible: bool):
     """Set target images to visible or invisible."""
     img_layers = _get_connected_target_image_layers(shapes)
     for img_layer in img_layers:
@@ -860,7 +886,7 @@ def _arrange_selection(idx: "int | set[int]") -> "list[int]":
         return sorted(list(idx), reverse=True)
 
 
-def _get_image_sources(shapes: Shapes) -> "list[str] | None":
+def _get_image_sources(shapes: FilamentsLayer) -> "list[str] | None":
     """Extract image sources from a shapes layer."""
     img_layers = _get_connected_target_image_layers(shapes)
     if not img_layers:
