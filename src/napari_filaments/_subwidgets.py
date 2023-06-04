@@ -1,5 +1,6 @@
 from magicclass import (
     MagicTemplate,
+    abstractapi,
     do_not_record,
     field,
     magicclass,
@@ -15,17 +16,17 @@ from magicclass.widgets import Figure, Separator
 class Tools(MagicTemplate):
     @magicmenu
     class Layers(MagicTemplate):
-        def open_image(self): ...
-        def open_filaments(self): ...
-        def add_filaments(self): ...
+        open_image = abstractapi()
+        open_filaments = abstractapi()
+        add_filaments = abstractapi()
 
         @magicmenu
         class Import(MagicTemplate):
-            def from_roi(self): ...
+            from_roi = abstractapi()
         sep0 = field(Separator)
-        def save_filaments(self): ...
+        save_filaments = abstractapi()
         sep1 = field(Separator)
-        def create_total_intensity(self): ...
+        create_total_intensity = abstractapi()
         # def export_roi(self): ...
 
     @magicmenu
@@ -56,8 +57,9 @@ class Tools(MagicTemplate):
 
     @magicmenu
     class Others(MagicTemplate):
-        def create_macro(self): ...
-        def send_widget_to_viewer(self): ...
+        create_macro = abstractapi()
+        show_macro = abstractapi()
+        send_widget_to_viewer = abstractapi()
 
 @magicclass(widget_type="tabbed")
 class Tabs(MagicTemplate):
@@ -68,31 +70,35 @@ class Tabs(MagicTemplate):
 
         @magicclass(widget_type="groupbox")
         class Left(MagicTemplate):
-            def extend_left(self): ...
-            def extend_and_fit_left(self): ...
-            def clip_left(self): ...
-            def clip_left_at_inflection(self): ...
+            extend_left = abstractapi()
+            extend_and_fit_left = abstractapi()
+            truncate_left = abstractapi()
+            truncate_left_at_inflection = abstractapi()
 
         @magicclass(widget_type="frame")
         class Both(MagicTemplate):
-            def fit_filament(self): ...
-            def delete_current(self): ...
-            def undo_spline(self): ...
-            def clip_at_inflections(self): ...
+            fit_filament = abstractapi()
+            delete_filament = abstractapi()
+            @magicclass(layout="horizontal", properties={"margins": (0, 0, 0, 0)})
+            class VBox(MagicTemplate):
+                undo = abstractapi()
+                redo = abstractapi()
+
+            truncate_at_inflections = abstractapi()
 
         @magicclass(widget_type="groupbox")
         class Right(MagicTemplate):
-            def extend_right(self): ...
-            def extend_and_fit_right(self): ...
-            def clip_right(self): ...
-            def clip_right_at_inflection(self): ...
+            extend_right = abstractapi()
+            extend_and_fit_right = abstractapi()
+            truncate_right = abstractapi()
+            truncate_right_at_inflection = abstractapi()
 
     @magicclass(widget_type="scrollable")
     class Measure(MagicTemplate):
-        def measure_properties(self): ...
-        def plot_profile(self): ...
-        def plot_curvature(self): ...
-        def kymograph(self): ...
+        measure_properties = abstractapi()
+        plot_profile = abstractapi()
+        plot_curvature = abstractapi()
+        kymograph = abstractapi()
 
 # fmt: on
 
