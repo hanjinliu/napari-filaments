@@ -59,6 +59,7 @@ class Tools(MagicTemplate):
     class Others(MagicTemplate):
         create_macro = abstractapi()
         show_macro = abstractapi()
+        send_widget_to_viewer = abstractapi()
 
 @magicclass(widget_type="tabbed")
 class Tabs(MagicTemplate):

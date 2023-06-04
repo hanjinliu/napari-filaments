@@ -7,6 +7,7 @@ from numpy.testing import assert_allclose
 
 from napari_filaments import FilamentAnalyzer, start
 from magicclass import get_button
+import magicclass.testing as mcls_testing
 
 IMAGE_PATH = Path(__file__).parent / "image.tif"
 SAVE_PATH = Path(__file__).parent / "result"
@@ -28,6 +29,12 @@ def test_widget(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
 
     assert ui.parent_viewer is not None
+
+
+def test_magicclass_stuff(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    mcls_testing.check_function_gui_buildable(ui)
+    mcls_testing.check_tooltip(ui)
 
 
 def test_start(make_napari_viewer):
