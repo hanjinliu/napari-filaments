@@ -40,6 +40,9 @@ SMALL_ICON_KW = dict(text="", min_width=20, min_height=28, max_height=30)
 
 ROI_FMT = "[{" + ROI_ID + "}]"
 
+defaults["macro-highlight"] = True
+del defaults
+
 
 @mk.register_type(np.ndarray)
 def _format_ndarray(x: np.ndarray):
@@ -88,7 +91,6 @@ class FilamentAnalyzer(MagicTemplate):
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._nfilaments = 0
         self.objectName()  # activate napari namespace
-        defaults["macro-highlight"] = True
 
     def _get_idx(self, w=None) -> "int | set[int]":
         if self.target_filaments is None:
