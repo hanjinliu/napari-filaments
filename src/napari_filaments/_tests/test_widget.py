@@ -245,3 +245,44 @@ def test_plot(make_napari_viewer):
     ui.fit_filament()
     ui.plot_profile()
     ui.plot_curvature()
+
+
+def test_delete(make_napari_viewer):
+    from napari_filaments._consts import ROI_ID
+
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+    ui.add_filament_data([[48, 30], [55, 86]])
+    ui.fit_filament()
+    ui.add_filament_data([[48, 31], [55, 86]])
+    ui.fit_filament()
+    ui.add_filament_data([[48, 32], [55, 86]])
+    ui.fit_filament()
+    ui.filament = 1
+    data = ui.target_filaments.data.copy()
+    ui.delete_filament(1)
+    assert ui.target_filaments.nshapes == len(data) - 1
+    assert_allclose(ui.target_filaments.data[0], data[0])
+    assert_allclose(ui.target_filaments.data[1], data[2])
+    assert list(ui.target_filaments.features[ROI_ID]) == [0, 1]
+
+    ui.undo()
+    assert ui.target_filaments.nshapes == len(data)
+    assert_allclose(ui.target_filaments.data[0], data[0])
+    assert_allclose(ui.target_filaments.data[1], data[1])
+    assert_allclose(ui.target_filaments.data[2], data[2])
+    assert list(ui.target_filaments.features[ROI_ID]) == [0, 1, 2]
+
+    ui.redo()
+    assert ui.target_filaments.nshapes == len(data) - 1
+    assert_allclose(ui.target_filaments.data[0], data[0])
+    assert_allclose(ui.target_filaments.data[1], data[2])
+    assert list(ui.target_filaments.features[ROI_ID]) == [0, 1]
+
+
+def test_kymograph(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    img = rng.normal(size=(5, 100, 100))
+    ui._add_image(img, "TYX", DUMMY_PATH)
+    ui.add_filament_data([[0, 10, 10], [0, 90, 90]])
+    ui.kymograph(idx=0, time_axis="T")

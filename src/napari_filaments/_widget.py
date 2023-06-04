@@ -9,6 +9,7 @@ import macrokit as mk
 from magicclass import (
     MagicTemplate,
     bind_key,
+    defaults,
     do_not_record,
     field,
     magicclass,
@@ -17,7 +18,7 @@ from magicclass import (
     set_options,
     vfield,
 )
-from magicclass.types import OneOf, SomeOf, Path
+from magicclass.types import Path
 from magicclass.undo import undo_callback
 from magicclass.widgets import Figure
 import napari
@@ -85,9 +86,9 @@ class FilamentAnalyzer(MagicTemplate):
     def __init__(self):
         self._last_target_filaments = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
-        self._dims_slider_changing = False
         self._nfilaments = 0
         self.objectName()  # activate napari namespace
+        defaults["macro-highlight"] = True
 
     def _get_idx(self, w=None) -> "int | set[int]":
         if self.target_filaments is None:
@@ -157,9 +158,7 @@ class FilamentAnalyzer(MagicTemplate):
         layer = self.target_filaments
         data = layer.data[idx]
         _sl, _ = _split_slice_and_path(data)
-        self._dims_slider_changing = True
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
-        self._dims_slider_changing = False
         layer.selected_data = {idx}
 
         props = layer.current_properties
@@ -169,7 +168,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         # update text color
         colors = np.full((layer.nshapes, 4), 1.0)
-        colors[idx] = [1.0, 1.0, 0.0, 1.0]  # yellow
+        colors[idx] = layer.edge_color[idx]
         layer.text.color = colors
         if layer.text.color.encoding_type == "ManualColorEncoding":
             layer.text.color.default = "white"
@@ -503,7 +502,10 @@ class FilamentAnalyzer(MagicTemplate):
         filaments: Annotated[
             FilamentsLayer, {"bind": target_filaments}
         ] = None,
-        properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
+        properties: Annotated[
+            list[str],
+            {"choices": Measurement.PROPERTIES, "widget_type": "Select"},
+        ] = ("length", "mean"),
         slices: Annotated[bool, {"label": "Record slice numbers"}] = False,
     ):
         """Measure properties of all the splines."""
@@ -532,6 +534,18 @@ class FilamentAnalyzer(MagicTemplate):
         tstack = self._tablestack
         tstack.add_table(sl_data, name=filaments.name)
         tstack.show()
+
+        # NOTE: Updating features are not safe. If user added new filaments
+        # after measuring, new filaments will initialized with duplicated
+        # features.
+        # feat = filaments.features
+        # filaments.features = feat.assign(**sl_data)
+        # defaults = filaments.current_properties
+        # for key in defaults.keys():
+        #     if key in Measurement.PROPERTIES:
+        #         defaults[key] = [np.nan]
+        # filaments.current_properties = defaults
+
         return pd.DataFrame(sl_data)
 
     @Tabs.Measure.wraps
@@ -574,14 +588,20 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Measure.wraps
     def kymograph(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
-        time_axis: OneOf[_get_axes],
-        idx: Annotated[int, {"bind": _get_idx}] = -1,
+        idx: Annotated[int, {"bind": _get_idx}],
+        time_axis: Annotated[str, {"bind": _get_axes}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
     ):
         """Plot kymograph using the selected image layer and the filament."""
         image, filaments = self._check_layers(image, filaments)
         sl, spl = self._get_slice_and_spline(idx, filaments)
+        if time_axis is None:
+            if image.ndim < 3:
+                raise ValueError("Cannot build a kymograph with a 2D image.")
+            t0 = image.metadata[IMAGE_AXES][0]
         if isinstance(time_axis, str):
             t0 = image.metadata[IMAGE_AXES].index(time_axis)
         else:
@@ -596,7 +616,7 @@ class FilamentAnalyzer(MagicTemplate):
         kymo = np.stack(profiles, axis=0)
         plt = Figure()
         plt.imshow(kymo, cmap=_cmap_to_mpl_cmap(image))
-        plt.show()
+        self.parent_viewer.window.add_dock_widget(plt, name="kymograph")
         return None
 
     @Tools.Layers.wraps
@@ -675,13 +695,15 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "del.png")
     def delete_filament(
         self,
-        idx: Annotated[int, {"bind": _get_idx}],
+        idx: Annotated[int, {"bind": _get_idx}] = None,
         filaments: Annotated[
             FilamentsLayer, {"bind": target_filaments}
         ] = None,
     ):
         """Delete selected (or the last) path."""
         _, filaments = self._check_layers(None, filaments)
+        if idx is None:
+            idx = {self.filament}
         if isinstance(idx, int):
             idx = {idx}
         # keep current state for undoing
