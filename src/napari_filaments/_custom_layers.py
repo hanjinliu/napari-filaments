@@ -7,7 +7,6 @@ from magicgui.widgets.bases import CategoricalWidget
 from napari.layers import Shapes
 from napari.utils._magicgui import find_viewer_ancestor
 from psygnal import Signal
-import macrokit as mk
 
 from ._consts import ROI_ID
 
@@ -70,7 +69,8 @@ class FilamentsLayer(Shapes):
         return None
 
 
-def get_filaments_layer(gui: CategoricalWidget):
+def get_filaments_layer(gui: CategoricalWidget) -> list[FilamentsLayer]:
+    """Return a list of FilamentsLayer instances in the current viewer."""
     viewer = find_viewer_ancestor(gui)
     if not viewer:
         return []
@@ -78,12 +78,3 @@ def get_filaments_layer(gui: CategoricalWidget):
 
 
 register_type(FilamentsLayer, choices=get_filaments_layer)
-
-
-@mk.register_type(np.ndarray)
-def _format_ndarray(x: np.ndarray):
-    if x.ndim != 2:
-        raise RuntimeError(
-            f"{x.ndim}D arrays are not supposed to be an input."
-        )
-    return str(x.tolist())

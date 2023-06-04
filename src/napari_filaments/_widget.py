@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Iterable, TypeVar, Annotated
 
 import numpy as np
 import pandas as pd
+import macrokit as mk
 from magicclass import (
     MagicTemplate,
     bind_key,
@@ -36,6 +37,15 @@ ICON_KW = dict(text="", min_width=42, min_height=42, max_height=45)
 SMALL_ICON_KW = dict(text="", min_width=20, min_height=28, max_height=30)
 
 ROI_FMT = "[{" + ROI_ID + "}]"
+
+
+@mk.register_type(np.ndarray)
+def _format_ndarray(x: np.ndarray):
+    if x.ndim != 2:
+        raise RuntimeError(
+            f"{x.ndim}D arrays are not supposed to be an input."
+        )
+    return str(x.tolist())
 
 
 @magicclass(widget_type="scrollable")
@@ -140,7 +150,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @filament.connect
-    def _on_filament_change(self, idx: int | None):
+    def _on_filament_change(self, idx: "int | None"):
         if idx is None:
             return
         layer = self.target_filaments
