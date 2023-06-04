@@ -71,8 +71,8 @@ class Tabs(MagicTemplate):
         class Left(MagicTemplate):
             extend_left = abstractapi()
             extend_and_fit_left = abstractapi()
-            clip_left = abstractapi()
-            clip_left_at_inflection = abstractapi()
+            truncate_left = abstractapi()
+            truncate_left_at_inflection = abstractapi()
 
         @magicclass(widget_type="frame")
         class Both(MagicTemplate):
@@ -83,14 +83,14 @@ class Tabs(MagicTemplate):
                 undo = abstractapi()
                 redo = abstractapi()
 
-            clip_at_inflections = abstractapi()
+            truncate_at_inflections = abstractapi()
 
         @magicclass(widget_type="groupbox")
         class Right(MagicTemplate):
             extend_right = abstractapi()
             extend_and_fit_right = abstractapi()
-            clip_right = abstractapi()
-            clip_right_at_inflection = abstractapi()
+            truncate_right = abstractapi()
+            truncate_right_at_inflection = abstractapi()
 
     @magicclass(widget_type="scrollable")
     class Measure(MagicTemplate):

@@ -3,6 +3,7 @@ import weakref
 from typing import TYPE_CHECKING, Iterable, TypeVar, Annotated
 
 import numpy as np
+import pandas as pd
 from magicclass import (
     MagicTemplate,
     bind_key,
@@ -31,17 +32,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from magicgui.widgets import ComboBox
 
 ICON_DIR = Path(__file__).parent / "_icon"
-ICON_KWARGS = dict(
-    text="", min_width=42, min_height=42, max_width=45, max_height=45
-)
-SMALL_ICON_KWARGS = dict(
-    text="", min_width=20, min_height=20, max_width=21, max_height=21
-)
+ICON_KW = dict(text="", min_width=42, min_height=42, max_height=45)
+SMALL_ICON_KW = dict(text="", min_width=20, min_height=28, max_height=30)
 
 ROI_FMT = "[{" + ROI_ID + "}]"
 
 
-@magicclass
+@magicclass(widget_type="scrollable")
 class FilamentAnalyzer(MagicTemplate):
     """
     Filament Analyzer widget.
@@ -86,6 +83,8 @@ class FilamentAnalyzer(MagicTemplate):
             return 0
         sel = self.target_filaments.selected_data
         if len(sel) == 0:
+            if self.target_filaments.nshapes == 0:
+                raise ValueError("No filament is selected.")
             return self.target_filaments.nshapes - 1
         return sel
 
@@ -136,17 +135,28 @@ class FilamentAnalyzer(MagicTemplate):
 
     @filament.connect
     def _on_filament_change(self, idx: int):
-        data = self.target_filaments.data[idx]
+        layer = self.target_filaments
+        data = layer.data[idx]
         _sl, _ = _split_slice_and_path(data)
         self._dims_slider_changing = True
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
         self._dims_slider_changing = False
-        self.target_filaments.selected_data = {idx}
+        layer.selected_data = {idx}
 
-        props = self.target_filaments.current_properties
-        next_id = self.target_filaments.nshapes
+        props = layer.current_properties
+        next_id = layer.nshapes
         props[ROI_ID] = next_id
-        self.target_filaments.current_properties = props
+        layer.current_properties = props
+
+        # update text color
+        colors = np.full((layer.nshapes, 4), 1.0)
+        edge_width = np.full(layer.nshapes, 0.5)
+        colors[idx] = [1.0, 1.0, 0.0, 1.0]  # yellow
+        edge_width[idx] = 1.2
+        layer.text.color = colors
+        if layer.text.color.encoding_type == "ManualColorEncoding":
+            layer.text.color.default = "white"
+        # layer.edge_width = edge_width
         return None
 
     @Tools.Layers.wraps
@@ -183,7 +193,11 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Layers.Import.wraps
     @set_design(text="From ImageJ ROI")
-    def from_roi(self, path: Path.Read["*.zip;*.roi;;All files (*)"]):
+    def from_roi(
+        self,
+        path: Path.Read["*.zip;*.roi;;All files (*)"],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+    ):
         """Import ImageJ Roi zip file as filaments."""
         from roifile import ROI_TYPE, roiread
 
@@ -192,8 +206,7 @@ class FilamentAnalyzer(MagicTemplate):
         if not isinstance(rois, list):
             rois = [rois]
 
-        shapes = self.target_filaments
-        axes = shapes.metadata[IMAGE_AXES]
+        axes = filaments.metadata[IMAGE_AXES]
 
         for roi in rois:
             if roi.roitype not in (ROI_TYPE.LINE, ROI_TYPE.POLYLINE):
@@ -207,7 +220,7 @@ class FilamentAnalyzer(MagicTemplate):
             d = np.array([x - 1 for x in [p, t, z] if x > 0])
             stacked = np.stack([d] * yx.shape[0], axis=0)
             multi_coords = np.concatenate([stacked, yx], axis=1)
-            self.target_filaments.add_paths(multi_coords)
+            filaments.add_paths(multi_coords)
         return None
 
     @Tools.Layers.wraps
@@ -253,183 +266,193 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "fit.png")
+    @set_design(**ICON_KW, icon=ICON_DIR / "fit.png")
     @bind_key("F1")
     def fit_filament(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         width: Annotated[float, {"bind": Tools.Parameters.lattice_width}] = 9,
     ):
         """Fit current spline to the image."""
         if not isinstance(image, Image):
             raise TypeError("'image' must be a Image layer.")
-        self.target_filaments._finish_drawing()
-        indices = _arrange_selection(idx)
-        for i in indices:
-            data: np.ndarray = self.target_filaments.data[i]
-            current_slice, data = _split_slice_and_path(data)
-            fit = self._fit_i_2d(width, image.data[current_slice], data)
-        return self._update_paths(idx, fit, current_slice)
+        filaments._finish_drawing()
+        i = _assert_single_selection(idx)
+        data: np.ndarray = filaments.data[i]
+        current_slice, data = _split_slice_and_path(data)
+        fit = self._fit_i_2d(width, image.data[current_slice], data)
+        return self._update_paths(i, fit, filaments, current_slice)
 
     @Tabs.Spline.Both.VBox.wraps
-    @set_design(**SMALL_ICON_KWARGS, icon=ICON_DIR / "undo.png")
+    @set_design(**SMALL_ICON_KW, icon=ICON_DIR / "undo.png")
+    @bind_key("Ctrl+Z")
     @do_not_record(recursive=False)
     def undo(self):
         """Undo the last operation."""
         return self.macro.undo()
 
     @Tabs.Spline.Both.VBox.wraps
-    @set_design(**SMALL_ICON_KWARGS, icon=ICON_DIR / "redo.png")
+    @set_design(**SMALL_ICON_KW, icon=ICON_DIR / "redo.png")
+    @bind_key("Ctrl+Y")
     @do_not_record(recursive=False)
     def redo(self):
         """Redo the last spline fit."""
         return self.macro.redo()
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_l.png")
+    @set_design(**ICON_KW, icon=ICON_DIR / "ext_l.png")
     def extend_left(
         self,
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline at the starting edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         out = spl.extend_left(dx)
-        return self._update_paths(idx, out, current_slice)
+        return self._update_paths(idx, out, filaments, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "ext_r.png")
+    @set_design(**ICON_KW, icon=ICON_DIR / "ext_r.png")
     def extend_right(
         self,
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline at the ending edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         out = spl.extend_right(dx)
-        return self._update_paths(idx, out, current_slice)
+        return self._update_paths(idx, out, filaments, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_l.png")
+    @set_design(**ICON_KW, icon=ICON_DIR / "extfit_l.png")
     def extend_and_fit_left(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline and fit to the filament at the starting edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.extend_filament_left(
             image.data[current_slice], dx, width=11, spline_error=3e-2
         )
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "extfit_r.png")
+    @set_design(**ICON_KW, icon=ICON_DIR / "extfit_r.png")
     def extend_and_fit_right(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline and fit to the filament at the ending edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.extend_filament_right(
             image.data[current_slice], dx, width=11, spline_error=3e-2
         )
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_l.png")
-    def clip_left(
+    @set_design(**ICON_KW, icon=ICON_DIR / "clip_l.png")
+    def truncate_left(
         self,
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
-        """Clip spline at the starting edge."""
+        """Truncate spline by constant lenght at the starting edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         start = dx / spl.length()
         fit = spl.clip(start, 1.0)
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "clip_r.png")
-    def clip_right(
+    @set_design(**ICON_KW, icon=ICON_DIR / "clip_r.png")
+    def truncate_right(
         self,
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
-        """Clip spline at the ending edge."""
+        """Truncate spline by constant lenght at the ending edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         stop = 1.0 - dx / spl.length()
         fit = spl.clip(0.0, stop)
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_l.png")
-    def clip_left_at_inflection(
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf_l.png")
+    def truncate_left_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
-        """Clip spline at the inflection point at starting edge."""
+        """Truncate spline at the inflection point at starting edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.clip_at_inflection_left(
             image.data[current_slice],
             callback=self._show_fitting_result,
         )
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf_r.png")
-    def clip_right_at_inflection(
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf_r.png")
+    def truncate_right_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
-        """Clip spline at the inflection point at ending edge."""
+        """Truncate spline at the inflection point at ending edge."""
         idx = _assert_single_selection(idx)
-        current_slice, spl = self._get_slice_and_spline(idx)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.clip_at_inflection_right(
             image.data[current_slice],
             callback=self._show_fitting_result,
         )
-        return self._update_paths(idx, fit, current_slice)
+        return self._update_paths(idx, fit, filaments, current_slice)
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "erf2.png")
-    @bind_key("F2")
-    def clip_at_inflections(
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf2.png")
+    def truncate_at_inflections(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
-        """Clip spline at the inflection points at both ends."""
+        """Truncate spline at the inflection points at both ends."""
         indices = _arrange_selection(idx)
         for i in indices:
-            current_slice, spl = self._get_slice_and_spline(i)
+            current_slice, spl = self._get_slice_and_spline(i, filaments)
             out = spl.clip_at_inflections(
                 image.data[current_slice],
                 callback=self._show_fitting_result,
             )
-            self._update_paths(i, out, current_slice)
+            self._update_paths(i, out, filaments, current_slice)
         return None
 
     @Tabs.Measure.wraps
     def measure_properties(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
         slices: Annotated[bool, {"label": "Record slice numbers"}] = False,
-        multi_measure: str = "",
     ):
         """Measure properties of all the splines."""
         import pandas as pd
@@ -444,7 +467,7 @@ class FilamentAnalyzer(MagicTemplate):
         data = {p: [] for p in properties}
 
         image_data = image.data
-        for idx in range(self.target_filaments.nshapes):
+        for idx in range(filaments.nshapes):
             sl, spl = self._get_slice_and_spline(idx)
             measure = Measurement(spl, image_data[sl])
             for v, s0 in zip(sl_data.values(), sl):
@@ -454,7 +477,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         sl_data.update(data)
         tstack = self._tablestack
-        tstack.add_table(sl_data, name=self.target_filaments.name)
+        tstack.add_table(sl_data, name=filaments.name)
         tstack.show()
         return pd.DataFrame(sl_data)
 
@@ -494,11 +517,12 @@ class FilamentAnalyzer(MagicTemplate):
     def kymograph(
         self,
         image: Annotated[Image, {"bind": target_image}],
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         time_axis: OneOf[_get_axes],
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Plot kymograph using the selected image layer and the filament."""
-        current_slice, spl = self._get_slice_and_spline(idx)
+        sl, spl = self._get_slice_and_spline(idx, filaments)
         if isinstance(time_axis, str):
             t0 = image.metadata[IMAGE_AXES].index(time_axis)
         else:
@@ -507,7 +531,7 @@ class FilamentAnalyzer(MagicTemplate):
         profiles: "list[np.ndarray]" = []
         for t in range(ntime):
             t1 = t0 + 1
-            sl = current_slice[:t0] + (t,) + current_slice[t1:]
+            sl = sl[:t0] + (t,) + sl[t1:]
             prof = spl.get_profile(image.data[sl])
             profiles.append(prof)
         kymo = np.stack(profiles, axis=0)
@@ -589,27 +613,49 @@ class FilamentAnalyzer(MagicTemplate):
     #     roiwrite(path, roilist)
 
     @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KWARGS, icon=ICON_DIR / "del.png")
-    def delete_filament(self, idx: Annotated[int, {"bind": _get_idx}]):
+    @set_design(**ICON_KW, icon=ICON_DIR / "del.png")
+    def delete_filament(
+        self,
+        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        idx: Annotated[int, {"bind": _get_idx}],
+    ):
         """Delete selected (or the last) path."""
         if isinstance(idx, int):
             idx = {idx}
-        layer = self.target_filaments
-        layer.selected_data = idx
-        data_info = {i: layer.data[i] for i in idx}
-        layer.remove_selected()
-        if len(idx) == 1 and layer.nshapes > 0:
-            self.filament = min(list(idx)[0], len(layer.data) - 1)
-            layer.selected_data = {self.filament}
+        # keep current state for undoing
+        data_info = {
+            i: (
+                filaments.data[i],
+                filaments.features.iloc[i : i + 1, :],
+                filaments.edge_color[i],
+            )
+            for i in idx
+        }
+
+        # select and remove
+        filaments.selected_data = idx
+        filaments.remove_selected()
+        if len(idx) == 1 and filaments.nshapes > 0:
+            self.filament = min(list(idx)[0], len(filaments.data) - 1)
+            filaments.selected_data = {self.filament}
 
         @undo_callback
         def _undo():
-            shapes = layer.data
-            for i, d in sorted(
+            shapes = filaments.data
+            cur_feat = filaments.features
+            cur_ec = filaments.edge_color
+            for i, (d, feat, ec) in sorted(
                 data_info.items(), key=lambda x: x[0], reverse=True
             ):
                 shapes.insert(i, d)
-            layer.data = shapes
+                np.insert(cur_ec, i, ec, axis=0)
+                cur_feat = pd.concat(
+                    [cur_feat.iloc[:i], feat, cur_feat.iloc[i:]],
+                    axis=1,
+                    ignore_index=True,
+                )
+
+            filaments.data = shapes
 
         return _undo
 
@@ -641,14 +687,8 @@ class FilamentAnalyzer(MagicTemplate):
         return self.parent_viewer.update_console({"ui": self})
 
     @nogui
-    @do_not_record
-    def get_spline(self, idx: int) -> Spline:
-        _, spl = self._get_slice_and_spline(idx)
-        return spl
-
-    @nogui
     def add_filament_data(self, layer: FilamentsLayer, data: np.ndarray):
-        data = data.round(2)
+        data = np.asarray(data)
         with layer.data_added.blocked():
             layer.add_paths(data)
 
@@ -685,19 +725,29 @@ class FilamentAnalyzer(MagicTemplate):
             )
         return self.Output._set_labels("Data points", "Intensity")
 
-    def _replace_data(self, idx: int, new_data: np.ndarray):
+    def _replace_data(
+        self, idx: int, new_data: np.ndarray, filaments: FilamentsLayer
+    ):
         """Replace the idx-th data to the new one."""
-        data = self.target_filaments.data
+        data = filaments.data
         data[idx] = new_data
-        self.target_filaments.data = data
+        filaments.data = data
         self.filament = idx
         return None
 
     def _update_paths(
-        self, idx: int, spl: Spline, current_slice: tuple[int, ...] = ()
+        self,
+        idx: int,
+        spl: Spline,
+        filaments: FilamentsLayer,
+        current_slice: tuple[int, ...] = (),
     ):
+        """
+        Update the filament path shape at `idx`-th index of `filaments` layer to the spline
+        `spl`. If the layer is >3D, `current_slice` will be the slice index of the 2D image.
+        """
         if idx < 0:
-            idx += self.target_filaments.nshapes
+            idx += filaments.nshapes
         if spl.length() > 1000:
             raise ValueError("Spline is too long.")
         sampled = spl.sample(interval=1.0)
@@ -705,16 +755,17 @@ class FilamentAnalyzer(MagicTemplate):
             sl = np.stack([np.array(current_slice)] * sampled.shape[0], axis=0)
             sampled = np.concatenate([sl, sampled], axis=1)
 
-        old_data = self.target_filaments.data[idx]
-        self._replace_data(idx, sampled)
+        old_data = filaments.data[idx]
+        self._replace_data(idx, sampled, filaments)
 
         @undo_callback
         def _out():
-            self._replace_data(idx, old_data)
+            self._replace_data(idx, old_data, filaments)
 
         @_out.with_redo
         def _out():
-            self._replace_data(idx, sampled)
+            self._replace_data(idx, sampled, filaments)
+            filaments.selected_data = {}
 
         return _out
 
@@ -804,7 +855,7 @@ class FilamentAnalyzer(MagicTemplate):
                 new_filaments_layer.data_added.blocked(),
                 new_filaments_layer.data_removed.blocked(),
             ):
-                added_data = new_filaments_layer.data[-1]
+                added_data = np.round(new_filaments_layer.data[-1], 2)
                 new_filaments_layer.data = new_filaments_layer.data[:-1]
                 self.add_filament_data(new_filaments_layer, added_data)
             self["filament"].reset_choices()
@@ -833,9 +884,9 @@ class FilamentAnalyzer(MagicTemplate):
         return self._set_filament_layer(layer)
 
     def _get_slice_and_spline(
-        self, idx: int
+        self, idx: int, filaments: FilamentsLayer
     ) -> "tuple[tuple[int, ...], Spline]":
-        data: np.ndarray = self.target_filaments.data[idx]
+        data: np.ndarray = filaments.data[idx]
         current_slice, data = _split_slice_and_path(data)
         if data.shape[0] < 4:
             data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
@@ -875,7 +926,7 @@ def _assert_single_selection(idx: "int | set[int]") -> int:
     if isinstance(idx, set):
         if len(idx) != 1:
             raise ValueError("Multiple selection")
-        return idx.pop()
+        return next(iter(idx))
     return idx
 
 
