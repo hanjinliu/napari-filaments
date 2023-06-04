@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 from magicgui import register_type
 from magicgui.widgets.bases import CategoricalWidget
 from napari.layers import Shapes
@@ -38,19 +37,6 @@ class FilamentsLayer(Shapes):
         self.data_removed.emit(info)
         self._relabel()
         return out
-
-    def insert_data(self, idx: int, data: np.ndarray, feature: pd.DataFrame):
-        cur_feat = self.features
-        cur_data = self.data
-        new_feat = pd.concat(
-            [cur_feat.iloc[:idx], feature, cur_feat.iloc[idx:]],
-            ignore_index=True,
-        )
-        new_data = np.insert(cur_data, idx, data, axis=0)
-        self.data = new_data
-        self.features = new_feat
-        self._relabel()
-        return None
 
     def _finish_drawing(self, event=None):
         was_creating = self._is_creating

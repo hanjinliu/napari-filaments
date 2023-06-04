@@ -3,6 +3,7 @@ import weakref
 from typing import TYPE_CHECKING, Iterable, TypeVar, Annotated
 
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 import macrokit as mk
 from magicclass import (
@@ -213,11 +214,14 @@ class FilamentAnalyzer(MagicTemplate):
     def from_roi(
         self,
         path: Path.Read["*.zip;*.roi;;All files (*)"],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
     ):
         """Import ImageJ Roi zip file as filaments."""
         from roifile import ROI_TYPE, roiread
 
+        _, filaments = self._check_layers(None, filaments)
         path = Path(path)
         rois = roiread(path)
         if not isinstance(rois, list):
@@ -551,18 +555,15 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Measure.wraps
     def plot_profile(
         self,
+        idx: Annotated[int, {"bind": _get_idx}] = -1,
         image: Annotated[Image, {"bind": target_image}] = None,
         filaments: Annotated[
             FilamentsLayer, {"bind": target_filaments}
         ] = None,
-        idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Plot intensity profile using the selected image layer and the filament."""
         image, filaments = self._check_layers(image, filaments)
-        current_slice, spl = self._get_slice_and_spline(idx, filaments)
-        prof = spl.get_profile(image.data[current_slice])
-        length = spl.length()
-        x = np.linspace(0, 1, int(length)) * length
+        x, prof = self.get_profile(idx, image, filaments)
         self.Output._plot(x, prof, color=_cmap_to_color(image))
         self.Output._set_labels("Position (px)", "Intensity")
         return None
@@ -717,6 +718,7 @@ class FilamentAnalyzer(MagicTemplate):
                 )
 
             filaments.data = shapes
+            filaments._relabel()
 
         return _undo
 
@@ -749,8 +751,11 @@ class FilamentAnalyzer(MagicTemplate):
         return self.parent_viewer.update_console({"ui": self})
 
     @nogui
-    def add_filament_data(self, layer: FilamentsLayer, data: np.ndarray):
+    def add_filament_data(
+        self, data: np.ndarray, layer: "FilamentsLayer | None" = None
+    ):
         data = np.asarray(data)
+        _, layer = self._check_layers(None, layer)
         with layer.data_added.blocked():
             layer.add_paths(data)
 
@@ -774,6 +779,22 @@ class FilamentAnalyzer(MagicTemplate):
         _, filaments = self._check_layers(None, filaments)
         _, spl = self._get_slice_and_spline(idx, filaments)
         return spl
+
+    @nogui
+    @do_not_record
+    def get_profile(
+        self,
+        idx: int = -1,
+        image: "Image | None" = None,
+        filaments: "FilamentsLayer | None" = None,
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+        """Get intensity profile using the selected image layer and the filament."""
+        image, filaments = self._check_layers(image, filaments)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
+        prof = spl.get_profile(image.data[current_slice])
+        length = spl.length()
+        x = np.linspace(0, 1, int(length), dtype=np.float32) * length
+        return x, prof
 
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
         """Callback function for error function fitting"""
@@ -931,7 +952,7 @@ class FilamentAnalyzer(MagicTemplate):
         with layer.draw_finished.blocked():
             added_data = np.round(layer.data[-1], 2)
             layer.data = layer.data[:-1]
-            self.add_filament_data(layer, added_data)
+            self.add_filament_data(added_data, layer=layer)
             if layer.nshapes > 0:
                 self._on_filament_change(layer.nshapes - 1)
         self["filament"].reset_choices()

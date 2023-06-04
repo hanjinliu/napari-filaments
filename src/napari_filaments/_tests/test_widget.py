@@ -11,6 +11,7 @@ import magicclass.testing as mcls_testing
 
 IMAGE_PATH = Path(__file__).parent / "image.tif"
 SAVE_PATH = Path(__file__).parent / "result"
+ROI_PATH = Path(__file__).parent / "_roi"
 DUMMY_PATH = Path(__file__).parent / "test.tif"
 
 rng = np.random.default_rng(1234)
@@ -46,7 +47,7 @@ def test_fit(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
     ui.open_image(IMAGE_PATH)
 
-    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    ui.add_filament_data([[48, 31], [55, 86]])
     ui.fit_filament(ui.parent_viewer.layers[0])
 
     ui.truncate_left()
@@ -54,13 +55,18 @@ def test_fit(make_napari_viewer):
     ui.extend_left()
     ui.extend_right()
 
+    for _ in range(5):
+        ui.undo()
+    for _ in range(5):
+        ui.redo()
+
 
 def test_io(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
     ui.open_image(IMAGE_PATH)
     img_layer = ui.target_image
 
-    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    ui.add_filament_data([[48, 31], [55, 86]])
     ui.fit_filament(img_layer)
 
     data0 = ui.target_filaments.data
@@ -79,7 +85,7 @@ def test_measure(make_napari_viewer):
     ui.open_image(IMAGE_PATH)
     img_layer = ui.target_image
 
-    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    ui.add_filament_data([[48, 31], [55, 86]])
     ui.fit_filament(img_layer)
 
     ui.target_filaments.add([[10, 10], [10, 50]], shape_type="path")
@@ -194,7 +200,7 @@ def test_extend_and_fit(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
     ui.open_image(IMAGE_PATH)
 
-    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
+    ui.add_filament_data([[48, 31], [55, 86]])
     image_layer = ui.parent_viewer.layers[0]
     ui.fit_filament(image_layer)
 
@@ -208,12 +214,34 @@ def test_clip_inflection(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
     ui.open_image(IMAGE_PATH)
 
-    ui.target_filaments.add([[48, 31], [55, 86]], shape_type="path")
-    image_layer = ui.parent_viewer.layers[0]
-    ui.fit_filament(image_layer)
+    ui.add_filament_data([[48, 31], [55, 86]])
+    ui.fit_filament()
 
     ui.extend_left(dx=20)
     ui.extend_right(dx=20)
-    ui.truncate_left_at_inflection(image_layer)
-    ui.truncate_right_at_inflection(image_layer)
+    ui.truncate_left_at_inflection()
+    ui.truncate_right_at_inflection()
     assert ui.get_spline(0).length() == pytest.approx(62.7, abs=0.1)
+    ui.undo()
+    ui.undo()
+    ui.truncate_at_inflections()
+    assert ui.get_spline(0).length() == pytest.approx(62.7, abs=0.2)
+
+
+def test_read_roi_files(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+    for path in (ROI_PATH).glob("*"):
+        ui.from_roi(path)
+        for i in range(ui.target_filaments.nshapes):
+            _, prof = ui.get_profile(i)
+            assert prof.mean() > 80
+
+
+def test_plot(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+    ui.add_filament_data([[48, 31], [55, 86]])
+    ui.fit_filament()
+    ui.plot_profile()
+    ui.plot_curvature()
