@@ -30,8 +30,9 @@ def test_widget(make_napari_viewer):
     assert ui.parent_viewer is not None
 
 
-def test_start():
-    start()
+def test_start(make_napari_viewer):
+    ui = start(make_napari_viewer())
+    ui.parent_viewer.close()
 
 
 def test_fit(make_napari_viewer):

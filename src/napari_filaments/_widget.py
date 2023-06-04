@@ -130,6 +130,11 @@ class FilamentAnalyzer(MagicTemplate):
         self.target_filaments.mode = _mode
         if _fil in cbox.choices:
             cbox.value = _fil
+        else:
+            try:
+                cbox.value = max(cbox.choices)
+            except Exception:
+                pass
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
         self._on_filament_change(self.filament)
         return None
