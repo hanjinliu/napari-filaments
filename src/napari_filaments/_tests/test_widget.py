@@ -157,6 +157,7 @@ def test_target_change(make_napari_viewer):
     ui.target_filaments.add_paths([[1, 10, 10], [1, 10, 40]])
     assert ui.filament == 1
     ui.parent_viewer.dims.set_current_step(0, 1)
+    assert ui.filament == 1
 
     ui["target_filaments"].value = ui["target_filaments"].choices[1]
     assert ui.filament == 1
@@ -164,6 +165,7 @@ def test_target_change(make_napari_viewer):
     ui.filament = 2
 
     ui["target_filaments"].value = ui["target_filaments"].choices[0]
+    # 0-th filaments layer has less filaments. Set to the last filament.
     assert ui.filament == 1
 
 

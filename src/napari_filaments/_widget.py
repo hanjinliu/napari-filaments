@@ -108,7 +108,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @target_filaments.connect
-    def _on_change(self):
+    def _on_target_filament_change(self):
         # old parameters
         _sl = self.parent_viewer.dims.current_step[:-2]
         _fil = self.filament
@@ -131,10 +131,13 @@ class FilamentAnalyzer(MagicTemplate):
         if _fil in cbox.choices:
             cbox.value = _fil
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
+        self._on_filament_change(self.filament)
         return None
 
     @filament.connect
-    def _on_filament_change(self, idx: int):
+    def _on_filament_change(self, idx: int | None):
+        if idx is None:
+            return
         layer = self.target_filaments
         data = layer.data[idx]
         _sl, _ = _split_slice_and_path(data)
@@ -157,6 +160,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @Tools.Layers.wraps
+    @bind_key("Ctrl+K, Ctrl+O")
     def open_image(self, path: Path.Read["*.tif;*.tiff"]):
         """Open a TIF."""
         path = Path(path)
@@ -169,6 +173,7 @@ class FilamentAnalyzer(MagicTemplate):
         return self._add_image(img, axes, path)
 
     @Tools.Layers.wraps
+    @bind_key("Ctrl+K, Ctrl+F")
     def open_filaments(self, path: Path.Dir):
         """Open a directory with csv files as a filament layer."""
         import pandas as pd
@@ -221,6 +226,7 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     @Tools.Layers.wraps
+    @bind_key("Ctrl+K, Ctrl+S")
     def save_filaments(self, layer: FilamentsLayer, path: Path.Save):
         """Save a Shapes layer as a directory of CSV files."""
         import datetime
@@ -701,6 +707,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @Tools.Others.wraps
     @do_not_record
+    @bind_key("Ctrl+Shift+M")
     def create_macro(self):
         """Create an executable Python script."""
         import macrokit as mk
@@ -891,25 +898,27 @@ class FilamentAnalyzer(MagicTemplate):
             self.parent_viewer.dims.set_axis_label(
                 list(range(ndim)), axis_labels
             )
+        self._on_target_filament_change()  # initialize
         return None
 
     def _on_data_added(self):
         self["filament"].reset_choices()
-        self.filament = self.target_filaments.nshapes - 1
+        if self.target_filaments.nshapes > 0:
+            self.filament = self.target_filaments.nshapes - 1
+            self.target_filaments.selected_data = {}
+            self.target_filaments.refresh()
 
     def _on_data_removed(self):
         self["filament"].reset_choices()
         self._on_filament_change(self.filament)
 
     def _on_data_draw_finished(self, layer: FilamentsLayer):
-        with (
-            layer.draw_finished.blocked(),
-            layer.data_added.blocked(),
-            layer.data_removed.blocked(),
-        ):
+        with layer.draw_finished.blocked():
             added_data = np.round(layer.data[-1], 2)
             layer.data = layer.data[:-1]
             self.add_filament_data(layer, added_data)
+            if layer.nshapes > 0:
+                self._on_filament_change(layer.nshapes - 1)
         self["filament"].reset_choices()
 
     def _set_filament_layer(self, layer: FilamentsLayer):
@@ -917,7 +926,7 @@ class FilamentAnalyzer(MagicTemplate):
         layer.data_removed.connect(self._on_data_removed)
         layer.draw_finished.connect(self._on_data_draw_finished)
         layer.mode = "add_path"
-
+        self.target_filaments = layer
         return layer
 
     def _add_filament_layer(self, images: "list[Image]", name: str):
