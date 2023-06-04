@@ -267,14 +267,15 @@ class FilamentAnalyzer(MagicTemplate):
     @bind_key("F1")
     def fit_filament(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         width: Annotated[float, {"bind": Tools.Parameters.lattice_width}] = 9,
     ):
         """Fit current spline to the image."""
-        if not isinstance(image, Image):
-            raise TypeError("'image' must be a Image layer.")
+        image, filaments = self._check_layers(image, filaments)
         filaments._finish_drawing()
         i = _assert_single_selection(idx)
         data: np.ndarray = filaments.data[i]
@@ -302,11 +303,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "ext_l.png")
     def extend_left(
         self,
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline at the starting edge."""
+        _, filaments = self._check_layers(None, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         out = spl.extend_left(dx)
@@ -316,11 +320,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "ext_r.png")
     def extend_right(
         self,
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline at the ending edge."""
+        _, filaments = self._check_layers(None, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         out = spl.extend_right(dx)
@@ -330,12 +337,15 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "extfit_l.png")
     def extend_and_fit_left(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline and fit to the filament at the starting edge."""
+        image, filaments = self._check_layers(image, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.extend_filament_left(
@@ -347,12 +357,15 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "extfit_r.png")
     def extend_and_fit_right(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Extend spline and fit to the filament at the ending edge."""
+        image, filaments = self._check_layers(image, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.extend_filament_right(
@@ -364,11 +377,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "clip_l.png")
     def truncate_left(
         self,
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Truncate spline by constant lenght at the starting edge."""
+        _, filaments = self._check_layers(None, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         start = dx / spl.length()
@@ -379,11 +395,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "clip_r.png")
     def truncate_right(
         self,
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
         """Truncate spline by constant lenght at the ending edge."""
+        _, filaments = self._check_layers(None, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         stop = 1.0 - dx / spl.length()
@@ -394,11 +413,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf_l.png")
     def truncate_left_at_inflection(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection point at starting edge."""
+        image, filaments = self._check_layers(image, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.clip_at_inflection_left(
@@ -411,11 +433,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf_r.png")
     def truncate_right_at_inflection(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection point at ending edge."""
+        image, filaments = self._check_layers(image, filaments)
         idx = _assert_single_selection(idx)
         current_slice, spl = self._get_slice_and_spline(idx, filaments)
         fit = spl.clip_at_inflection_right(
@@ -428,11 +453,14 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf2.png")
     def truncate_at_inflections(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection points at both ends."""
+        image, filaments = self._check_layers(image, filaments)
         indices = _arrange_selection(idx)
         for i in indices:
             current_slice, spl = self._get_slice_and_spline(i, filaments)
@@ -446,14 +474,17 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Measure.wraps
     def measure_properties(
         self,
-        image: Annotated[Image, {"bind": target_image}],
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         properties: SomeOf[Measurement.PROPERTIES] = ("length", "mean"),
         slices: Annotated[bool, {"label": "Record slice numbers"}] = False,
     ):
         """Measure properties of all the splines."""
         import pandas as pd
 
+        image, filaments = self._check_layers(image, filaments)
         if slices:
             # Record slice numbers in columns such as "index_T"
             ndim = len(image.data.shape)
@@ -465,7 +496,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         image_data = image.data
         for idx in range(filaments.nshapes):
-            sl, spl = self._get_slice_and_spline(idx)
+            sl, spl = self._get_slice_and_spline(idx, filaments)
             measure = Measurement(spl, image_data[sl])
             for v, s0 in zip(sl_data.values(), sl):
                 v.append(s0)
@@ -482,9 +513,13 @@ class FilamentAnalyzer(MagicTemplate):
     def plot_curvature(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
     ):
         """Plot curvature of filament."""
-        _, spl = self._get_slice_and_spline(idx)
+        _, filaments = self._check_layers(None, filaments)
+        _, spl = self._get_slice_and_spline(idx, filaments)
         length = spl.length()
         x = np.linspace(0, 1, int(spl.length()))
         cv = spl.curvature(x)
@@ -495,11 +530,15 @@ class FilamentAnalyzer(MagicTemplate):
     @Tabs.Measure.wraps
     def plot_profile(
         self,
-        image: Annotated[Image, {"bind": target_image}],
+        image: Annotated[Image, {"bind": target_image}] = None,
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Plot intensity profile using the selected image layer and the filament."""
-        current_slice, spl = self._get_slice_and_spline(idx)
+        image, filaments = self._check_layers(image, filaments)
+        current_slice, spl = self._get_slice_and_spline(idx, filaments)
         prof = spl.get_profile(image.data[current_slice])
         length = spl.length()
         x = np.linspace(0, 1, int(length)) * length
@@ -519,6 +558,7 @@ class FilamentAnalyzer(MagicTemplate):
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Plot kymograph using the selected image layer and the filament."""
+        image, filaments = self._check_layers(image, filaments)
         sl, spl = self._get_slice_and_spline(idx, filaments)
         if isinstance(time_axis, str):
             t0 = image.metadata[IMAGE_AXES].index(time_axis)
@@ -613,10 +653,13 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "del.png")
     def delete_filament(
         self,
-        filaments: Annotated[FilamentsLayer, {"bind": target_filaments}],
         idx: Annotated[int, {"bind": _get_idx}],
+        filaments: Annotated[
+            FilamentsLayer, {"bind": target_filaments}
+        ] = None,
     ):
         """Delete selected (or the last) path."""
+        _, filaments = self._check_layers(None, filaments)
         if isinstance(idx, int):
             idx = {idx}
         # keep current state for undoing
@@ -699,6 +742,16 @@ class FilamentAnalyzer(MagicTemplate):
                 layer.add_paths(data)
 
         return _undo
+
+    @nogui
+    @do_not_record
+    def get_spline(
+        self, idx: int, filaments: "FilamentsLayer | None" = None
+    ) -> Spline:
+        """Get the idx-th spline object."""
+        _, filaments = self._check_layers(None, filaments)
+        _, spl = self._get_slice_and_spline(idx, filaments)
+        return spl
 
     def _show_fitting_result(self, opt: _opt.Optimizer, prof: np.ndarray):
         """Callback function for error function fitting"""
@@ -895,6 +948,19 @@ class FilamentAnalyzer(MagicTemplate):
             data = Spline.fit(data, degree=1, err=0).sample(interval=1.0)
         spl = Spline.fit(data, err=0.0)
         return current_slice, spl
+
+    def _check_layers(
+        self, image: "Image | None", filaments: "FilamentsLayer | None"
+    ):
+        if image is None:
+            image = self.target_image
+        if filaments is None:
+            filaments = self.target_filaments
+        if not isinstance(image, Image):
+            raise TypeError(f"Invalid image type: {type(image)}")
+        if not isinstance(filaments, FilamentsLayer):
+            raise TypeError(f"Invalid filament type: {type(filaments)}")
+        return image, filaments
 
 
 def _split_slice_and_path(
