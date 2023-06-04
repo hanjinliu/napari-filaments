@@ -150,13 +150,10 @@ class FilamentAnalyzer(MagicTemplate):
 
         # update text color
         colors = np.full((layer.nshapes, 4), 1.0)
-        edge_width = np.full(layer.nshapes, 0.5)
         colors[idx] = [1.0, 1.0, 0.0, 1.0]  # yellow
-        edge_width[idx] = 1.2
         layer.text.color = colors
         if layer.text.color.encoding_type == "ManualColorEncoding":
             layer.text.color.default = "white"
-        # layer.edge_width = edge_width
         return None
 
     @Tools.Layers.wraps
@@ -766,6 +763,7 @@ class FilamentAnalyzer(MagicTemplate):
         def _out():
             self._replace_data(idx, sampled, filaments)
             filaments.selected_data = {}
+            filaments.refresh()
 
         return _out
 
@@ -842,27 +840,32 @@ class FilamentAnalyzer(MagicTemplate):
             )
         return None
 
-    def _set_filament_layer(self, new_filaments_layer: FilamentsLayer):
-        @new_filaments_layer.data_added.connect
-        @new_filaments_layer.data_removed.connect
-        def _on_data_added():
-            self["filament"].reset_choices()
+    def _on_data_added(self):
+        self["filament"].reset_choices()
+        self.filament = self.target_filaments.nshapes - 1
 
-        @new_filaments_layer.draw_finished.connect
-        def _on_data_add_finished():
-            with (
-                new_filaments_layer.draw_finished.blocked(),
-                new_filaments_layer.data_added.blocked(),
-                new_filaments_layer.data_removed.blocked(),
-            ):
-                added_data = np.round(new_filaments_layer.data[-1], 2)
-                new_filaments_layer.data = new_filaments_layer.data[:-1]
-                self.add_filament_data(new_filaments_layer, added_data)
-            self["filament"].reset_choices()
+    def _on_data_removed(self):
+        self["filament"].reset_choices()
+        self._on_filament_change(self.filament)
 
-        new_filaments_layer.mode = "add_path"
+    def _on_data_draw_finished(self, layer: FilamentsLayer):
+        with (
+            layer.draw_finished.blocked(),
+            layer.data_added.blocked(),
+            layer.data_removed.blocked(),
+        ):
+            added_data = np.round(layer.data[-1], 2)
+            layer.data = layer.data[:-1]
+            self.add_filament_data(layer, added_data)
+        self["filament"].reset_choices()
 
-        return new_filaments_layer
+    def _set_filament_layer(self, layer: FilamentsLayer):
+        layer.data_added.connect(self._on_data_added)
+        layer.data_removed.connect(self._on_data_removed)
+        layer.draw_finished.connect(self._on_data_draw_finished)
+        layer.mode = "add_path"
+
+        return layer
 
     def _add_filament_layer(self, images: "list[Image]", name: str):
         """Add a Filaments layer for the target image."""

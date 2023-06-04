@@ -17,7 +17,7 @@ class FilamentsLayer(Shapes):
 
     data_added = Signal(np.ndarray)
     data_removed = Signal(dict[int, np.ndarray])
-    draw_finished = Signal(np.ndarray)
+    draw_finished = Signal(object)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -59,7 +59,7 @@ class FilamentsLayer(Shapes):
         if was_creating:
             # NOTE: Emit here. Before calling super class method, the last data
             # may have a duplicated vertex.
-            self.draw_finished.emit(self.data[-1])
+            self.draw_finished.emit(self)
         return out
 
     def _relabel(self):
