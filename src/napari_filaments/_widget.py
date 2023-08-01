@@ -193,8 +193,6 @@ class FilamentAnalyzer(MagicTemplate):
     @bind_key("Ctrl+K, Ctrl+F")
     def open_filaments(self, path: Path.Dir):
         """Open a directory with csv files as a filament layer."""
-        import pandas as pd
-
         path = Path(path)
 
         all_csv: "list[np.ndarray]" = []
@@ -251,9 +249,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Save a Shapes layer as a directory of CSV files."""
         import datetime
         import json
-
         import magicclass as mcls
-        import pandas as pd
 
         from . import __version__
 
@@ -511,7 +507,6 @@ class FilamentAnalyzer(MagicTemplate):
         slices: Annotated[bool, {"label": "Record slice numbers"}] = False,
     ):
         """Measure properties of all the splines."""
-        import pandas as pd
 
         image, filaments = self._check_layers(image, filaments)
         if slices:
