@@ -56,8 +56,11 @@ class Tools(MagicTemplate):
         sigma_range = vfield((0.5, 5.0), record=False)
         target_image_filter = vfield(True, record=False)
 
-    @magicmenu(icon="tdesign:measurement")
-    class Measure(MagicTemplate):
+    @magicmenu(icon="simple-line-icons:graph")
+    class Filaments(MagicTemplate):
+        """Filaments operations"""
+        copy_filament = abstractapi()
+        sep0 = field(Separator)
         measure_properties = abstractapi()
         plot_profile = abstractapi()
         plot_curvature = abstractapi()
