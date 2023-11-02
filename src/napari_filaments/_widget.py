@@ -9,7 +9,6 @@ import macrokit as mk
 from magicclass import (
     MagicTemplate,
     bind_key,
-    defaults,
     do_not_record,
     field,
     magicclass,
@@ -21,6 +20,7 @@ from magicclass import (
 from magicclass.types import Path, Optional
 from magicclass.undo import undo_callback
 from magicclass.widgets import Figure
+
 import napari
 from napari.layers import Image
 
@@ -39,9 +39,6 @@ ICON_KW = dict(text="", min_width=42, min_height=42, max_height=45)
 SMALL_ICON_KW = dict(text="", min_width=20, min_height=28, max_height=30)
 
 ROI_FMT = "[{" + ROI_ID + "}]"
-
-defaults["macro-highlight"] = True
-del defaults
 
 
 @mk.register_type(np.ndarray)
@@ -86,6 +83,16 @@ class FilamentAnalyzer(MagicTemplate):
     Tools = _sw.Tools
     Output = _sw.Output
 
+    def _validate_image_layer(self, image, args) -> str:
+        if isinstance(image, str):
+            return image
+        elif isinstance(image, Image):
+            return image.name
+        elif image is None:
+            return self.target_filaments.name
+        else:
+            raise TypeError("`image` must be an image layer or its name.")
+
     def _validate_filaments_layer(self, filaments, args) -> str:
         if isinstance(filaments, str):
             return filaments
@@ -94,8 +101,14 @@ class FilamentAnalyzer(MagicTemplate):
         elif filaments is None:
             return self.target_filaments.name
         else:
-            raise TypeError("`filaments` .")
+            raise TypeError(
+                "`filaments` must be a filaments layer or its name."
+            )
 
+    _ImageLayer = Annotated[
+        Image,
+        {"bind": target_image, "validator": _validate_image_layer},
+    ]
     _FilamentsLayer = Annotated[
         FilamentsLayer,
         {"bind": target_filaments, "validator": _validate_filaments_layer},
@@ -106,6 +119,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
         self._nfilaments = 0
         self.objectName()  # activate napari namespace
+        self.macro.options.syntax_highlight = True
 
     def _get_idx(self, w=None) -> "int | set[int]":
         if self.target_filaments is None:
