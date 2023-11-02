@@ -86,6 +86,8 @@ class FilamentAnalyzer(MagicTemplate):
     Tools = _subwidgets.Tools
     Output = _subwidgets.Output
 
+    _FilamentsLayer = Annotated[FilamentsLayer, {"bind": target_filaments}]
+
     def __init__(self):
         self._last_target_filaments = None
         self._color_default = np.array([0.973, 1.000, 0.412, 1.000])
@@ -176,7 +178,7 @@ class FilamentAnalyzer(MagicTemplate):
             layer.text.color.default = "white"
         return None
 
-    @Tools.Layers.wraps
+    @set_design(text="Open image", location=Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+O")
     def open_image(self, path: Path.Read["*.tif;*.tiff"]):
         """Open a TIF."""
@@ -189,7 +191,7 @@ class FilamentAnalyzer(MagicTemplate):
             img: np.ndarray = tif.asarray()
         return self._add_image(img, axes, path)
 
-    @Tools.Layers.wraps
+    @set_design(text="Open filaments", location=Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+F")
     def open_filaments(self, path: Path.Dir):
         """Open a directory with csv files as a filament layer."""
@@ -202,20 +204,17 @@ class FilamentAnalyzer(MagicTemplate):
         self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
         return None
 
-    @Tools.Layers.wraps
+    @set_design(text="Add filaments", location=Tools.Layers)
     def add_filaments(self):
         images = self.target_filaments.metadata[TARGET_IMG_LAYERS]
         name = self.target_filaments.name.lstrip("[F] ")
         return self._add_filament_layer(images, name)
 
-    @Tools.Layers.Import.wraps
-    @set_design(text="From ImageJ ROI")
+    @set_design(text="From ImageJ ROI", location=Tools.Layers.Import)
     def from_roi(
         self,
         path: Path.Read["*.zip;*.roi;;All files (*)"],
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
     ):
         """Import ImageJ Roi zip file as filaments."""
         from roifile import ROI_TYPE, roiread
@@ -243,7 +242,7 @@ class FilamentAnalyzer(MagicTemplate):
             filaments.add_paths(multi_coords)
         return None
 
-    @Tools.Layers.wraps
+    @set_design(text="Save filaments", location=Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+S")
     def save_filaments(self, layer: FilamentsLayer, path: Path.Save):
         """Save a Shapes layer as a directory of CSV files."""
@@ -284,15 +283,14 @@ class FilamentAnalyzer(MagicTemplate):
             json.dump(info, f, indent=2)
         return None
 
-    @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "fit.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "fit.png", location=Tabs.Spline.Both
+    )
     @bind_key("F1")
     def fit_filament(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         width: Annotated[float, {"bind": Tools.Parameters.lattice_width}] = 9,
     ):
@@ -305,29 +303,34 @@ class FilamentAnalyzer(MagicTemplate):
         fit = self._fit_i_2d(width, image.data[current_slice], data)
         return self._update_paths(i, fit, filaments, current_slice)
 
-    @Tabs.Spline.Both.VBox.wraps
-    @set_design(**SMALL_ICON_KW, icon=ICON_DIR / "undo.png")
+    @set_design(
+        **SMALL_ICON_KW,
+        icon=ICON_DIR / "undo.png",
+        location=Tabs.Spline.Both.VBox,
+    )
     @bind_key("Ctrl+Z")
     @do_not_record(recursive=False)
     def undo(self):
         """Undo the last operation."""
         return self.macro.undo()
 
-    @Tabs.Spline.Both.VBox.wraps
-    @set_design(**SMALL_ICON_KW, icon=ICON_DIR / "redo.png")
+    @set_design(
+        **SMALL_ICON_KW,
+        icon=ICON_DIR / "redo.png",
+        location=Tabs.Spline.Both.VBox,
+    )
     @bind_key("Ctrl+Y")
     @do_not_record(recursive=False)
     def redo(self):
         """Redo the last spline fit."""
         return self.macro.redo()
 
-    @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "ext_l.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "ext_l.png", location=Tabs.Spline.Left
+    )
     def extend_left(
         self,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -338,13 +341,12 @@ class FilamentAnalyzer(MagicTemplate):
         out = spl.extend_left(dx)
         return self._update_paths(idx, out, filaments, current_slice)
 
-    @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "ext_r.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "ext_r.png", location=Tabs.Spline.Right
+    )
     def extend_right(
         self,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -355,14 +357,13 @@ class FilamentAnalyzer(MagicTemplate):
         out = spl.extend_right(dx)
         return self._update_paths(idx, out, filaments, current_slice)
 
-    @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "extfit_l.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "extfit_l.png", location=Tabs.Spline.Left
+    )
     def extend_and_fit_left(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -375,14 +376,13 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "extfit_r.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "extfit_r.png", location=Tabs.Spline.Right
+    )
     def extend_and_fit_right(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -395,13 +395,12 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "clip_l.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "clip_l.png", location=Tabs.Spline.Left
+    )
     def truncate_left(
         self,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -413,13 +412,12 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.clip(start, 1.0)
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "clip_r.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "clip_r.png", location=Tabs.Spline.Right
+    )
     def truncate_right(
         self,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
     ):
@@ -431,14 +429,13 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.clip(0.0, stop)
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Left.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "erf_l.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "erf_l.png", location=Tabs.Spline.Left
+    )
     def truncate_left_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection point at starting edge."""
@@ -451,14 +448,13 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Right.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "erf_r.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "erf_r.png", location=Tabs.Spline.Right
+    )
     def truncate_right_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection point at ending edge."""
@@ -471,14 +467,13 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "erf2.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "erf2.png", location=Tabs.Spline.Both
+    )
     def truncate_at_inflections(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
         """Truncate spline at the inflection points at both ends."""
@@ -493,13 +488,11 @@ class FilamentAnalyzer(MagicTemplate):
             self._update_paths(i, out, filaments, current_slice)
         return None
 
-    @Tabs.Measure.wraps
+    @set_design(text="Measure properties", location=Tools.Measure)
     def measure_properties(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
         properties: Annotated[
             list[str],
             {"choices": Measurement.PROPERTIES, "widget_type": "Select"},
@@ -545,13 +538,11 @@ class FilamentAnalyzer(MagicTemplate):
 
         return pd.DataFrame(sl_data)
 
-    @Tabs.Measure.wraps
+    @set_design(text="Plot curvature", location=Tools.Measure)
     def plot_curvature(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
     ):
         """Plot curvature of filament."""
         _, filaments = self._check_layers(None, filaments)
@@ -563,14 +554,12 @@ class FilamentAnalyzer(MagicTemplate):
         self.Output._set_labels("Position (px)", "Curvature")
         return None
 
-    @Tabs.Measure.wraps
+    @set_design(text="Plot profile", location=Tools.Measure)
     def plot_profile(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
     ):
         """Plot intensity profile using the selected image layer and the filament."""
         image, filaments = self._check_layers(image, filaments)
@@ -579,18 +568,22 @@ class FilamentAnalyzer(MagicTemplate):
         self.Output._set_labels("Position (px)", "Intensity")
         return None
 
-    def _get_axes(self, w=None):
-        return self.parent_viewer.dims.axis_labels[:-2]
+    def _get_axes(self, w=None) -> "str | None":
+        axes = self.parent_viewer.dims.axis_labels[:-2]
+        if len(axes) == 0:
+            return None
+        else:
+            if "T" in axes:
+                return "T"
+            return axes[0]
 
-    @Tabs.Measure.wraps
+    @set_design(text="Show kymograph", location=Tools.Measure)
     def kymograph(
         self,
         idx: Annotated[int, {"bind": _get_idx}],
-        time_axis: Annotated[str, {"bind": _get_axes}],
+        time_axis: Annotated[str | None, {"bind": _get_axes}],
         image: Annotated[Image, {"bind": target_image}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
     ):
         """Plot kymograph using the selected image layer and the filament."""
         image, filaments = self._check_layers(image, filaments)
@@ -602,7 +595,7 @@ class FilamentAnalyzer(MagicTemplate):
         if isinstance(time_axis, str):
             t0 = image.metadata[IMAGE_AXES].index(time_axis)
         else:
-            t0 = time_axis
+            raise TypeError(f"Invalid time_axis {time_axis!r}.")
         ntime = image.data.shape[t0]
         profiles: "list[np.ndarray]" = []
         for t in range(ntime):
@@ -616,8 +609,8 @@ class FilamentAnalyzer(MagicTemplate):
         self.parent_viewer.window.add_dock_widget(plt, name="kymograph")
         return None
 
-    @Tools.Layers.wraps
     @set_options(wlayers={"layout": "vertical", "label": "weight x layer"})
+    @set_design(text="Create total intensity", location=Tools.Layers)
     def create_total_intensity(self, wlayers: list[tuple[weight, Image]]):
         """Create a total intensity layer from multiple images."""
         weights = [t[0] for t in wlayers]
@@ -652,8 +645,8 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     # TODO: how to save at subpixel resolution?
-    # @Tools.Layers.wraps
     # @set_options(path={"mode": "w", "filter": ".zip"})
+    # @set_design(text="Export ROI", location=Tools.Layers)
     # def export_roi(self, layer: FilamentsLayer, path: Path):
     #     """Export filament layer as a ImageJ ROI.zip file."""
     #
@@ -688,14 +681,13 @@ class FilamentAnalyzer(MagicTemplate):
     #         roilist.append(roi)
     #     roiwrite(path, roilist)
 
-    @Tabs.Spline.Both.wraps
-    @set_design(**ICON_KW, icon=ICON_DIR / "del.png")
+    @set_design(
+        **ICON_KW, icon=ICON_DIR / "del.png", location=Tabs.Spline.Both
+    )
     def delete_filament(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = None,
-        filaments: Annotated[
-            FilamentsLayer, {"bind": target_filaments}
-        ] = None,
+        filaments: _FilamentsLayer = None,
     ):
         """Delete selected (or the last) path."""
         _, filaments = self._check_layers(None, filaments)
@@ -741,7 +733,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         return _undo
 
-    @Tools.Others.wraps
+    @set_design(text="Create macro", location=Tools.Others)
     @do_not_record
     @bind_key("Ctrl+Shift+M")
     def create_macro(self):
@@ -756,14 +748,14 @@ class FilamentAnalyzer(MagicTemplate):
         new.show()
         return None
 
-    @Tools.Others.wraps
+    @set_design(text="Show macro", location=Tools.Others)
     @do_not_record
     def show_macro(self):
         """Show the macro widget."""
         self.macro.widget.show()
         return None
 
-    @Tools.Others.wraps
+    @set_design(text="Send widget to viewer", location=Tools.Others)
     @do_not_record
     def send_widget_to_viewer(self):
         """Add this widget to the viewer console as identifier 'ui'."""
@@ -773,6 +765,16 @@ class FilamentAnalyzer(MagicTemplate):
     def add_filament_data(
         self, data: np.ndarray, layer: "FilamentsLayer | None" = None
     ):
+        """
+        Add a new filament data to the layer.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Coordinates of the filament.
+        layer : FilamentsLayer, optional
+            Target filaments layer.
+        """
         data = np.asarray(data)
         _, layer = self._check_layers(None, layer)
         with layer.data_added.blocked():
@@ -787,6 +789,7 @@ class FilamentAnalyzer(MagicTemplate):
             with layer.data_added.blocked():
                 layer.add_paths(data)
 
+        self["filament"].reset_choices()
         return _undo
 
     @nogui

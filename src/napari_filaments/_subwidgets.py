@@ -14,8 +14,9 @@ from magicclass.widgets import Figure, Separator
 # fmt: off
 @magictoolbar
 class Tools(MagicTemplate):
-    @magicmenu
+    @magicmenu(icon="ion:layers")
     class Layers(MagicTemplate):
+        """Open, save and create layers"""
         open_image = abstractapi()
         open_filaments = abstractapi()
         add_filaments = abstractapi()
@@ -29,7 +30,7 @@ class Tools(MagicTemplate):
         create_total_intensity = abstractapi()
         # def export_roi(self): ...
 
-    @magicmenu
+    @magicmenu(icon="teenyicons:adjust-horizontal-solid")
     class Parameters(MagicTemplate):
         """
         Global parameters of Filament Analyzer.
@@ -55,7 +56,14 @@ class Tools(MagicTemplate):
         sigma_range = vfield((0.5, 5.0), record=False)
         target_image_filter = vfield(True, record=False)
 
-    @magicmenu
+    @magicmenu(icon="tdesign:measurement")
+    class Measure(MagicTemplate):
+        measure_properties = abstractapi()
+        plot_profile = abstractapi()
+        plot_curvature = abstractapi()
+        kymograph = abstractapi()
+
+    @magicmenu(icon="tabler:dots")
     class Others(MagicTemplate):
         create_macro = abstractapi()
         show_macro = abstractapi()
@@ -92,13 +100,6 @@ class Tabs(MagicTemplate):
             extend_and_fit_right = abstractapi()
             truncate_right = abstractapi()
             truncate_right_at_inflection = abstractapi()
-
-    @magicclass(widget_type="scrollable")
-    class Measure(MagicTemplate):
-        measure_properties = abstractapi()
-        plot_profile = abstractapi()
-        plot_curvature = abstractapi()
-        kymograph = abstractapi()
 
 # fmt: on
 
