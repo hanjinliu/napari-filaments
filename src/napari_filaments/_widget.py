@@ -631,7 +631,7 @@ class FilamentAnalyzer(MagicTemplate):
     def kymograph(
         self,
         idx: Annotated[int, {"bind": _get_idx}],
-        time_axis: Annotated["str | None", {"bind": _get_axes}],
+        time_axis: Annotated[str, {"bind": _get_axes}],
         image: Annotated[Image, {"bind": target_image}] = None,
         filaments: _FilamentsLayer = None,
     ):
