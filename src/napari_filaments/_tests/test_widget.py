@@ -286,3 +286,10 @@ def test_kymograph(make_napari_viewer):
     ui._add_image(img, "TYX", DUMMY_PATH)
     ui.add_filament_data([[0, 10, 10], [0, 90, 90]])
     ui.kymograph(idx=0, time_axis="T")
+
+
+def test_copy_filament(make_napari_viewer):
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+    ui.add_filament_data([[48, 31], [55, 86]])
+    ui.copy_filament()

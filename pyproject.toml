@@ -10,7 +10,7 @@ profile = "black"
 line_length = 79
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["_tests"]
 addopts = "-v"
 filterwarnings = [
     "ignore::DeprecationWarning:qtpy",
