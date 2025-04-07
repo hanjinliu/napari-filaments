@@ -24,12 +24,13 @@ from magicclass.widgets import Figure
 import napari
 from napari.layers import Image
 
-from . import _optimizer as _opt, _subwidgets as _sw
-from ._spline import Measurement, Spline
-from ._table_stack import TableStack
-from ._types import weight
-from ._custom_layers import FilamentsLayer
-from ._consts import ROI_ID, TARGET_IMG_LAYERS, IMAGE_AXES, SOURCE
+from napari_filaments import _optimizer as _opt
+from napari_filaments._napari import _subwidgets as _sw
+from napari_filaments._spline import Measurement, Spline
+from napari_filaments._types import weight
+from napari_filaments._consts import ROI_ID, TARGET_IMG_LAYERS, IMAGE_AXES, SOURCE
+from napari_filaments._napari._table_stack import TableStack
+from napari_filaments._napari._custom_layers import FilamentsLayer
 
 if TYPE_CHECKING:  # pragma: no cover
     from magicgui.widgets import ComboBox

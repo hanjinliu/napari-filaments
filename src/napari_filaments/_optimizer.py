@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC, abstractstaticmethod
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, NamedTuple, Tuple, Union
 
 import numpy as np
@@ -17,7 +17,8 @@ Bounds = Tuple[Union[ArrayLike, float], Union[ArrayLike, float]]
 
 
 class Optimizer(ABC):
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     class Parameters(NamedTuple):
         pass
 
@@ -68,11 +69,15 @@ class Optimizer(ABC):
         """Sample points at given x coordinates."""
         return self.model(xdata, *self.params)
 
-    @abstractstaticmethod
+    
+    @staticmethod
+    @abstractmethod
     def model(xdata: np.ndarray, *args: Parameters):
         """Model function."""
 
-    @abstractstaticmethod
+    
+    @staticmethod
+    @abstractmethod
     def initialize(ydata: np.ndarray) -> tuple[np.ndarray, Bounds]:
         """Initialize parameters and bounds."""
 

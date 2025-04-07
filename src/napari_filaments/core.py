@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING
 import napari
 
 if TYPE_CHECKING:  # pragma: no cover
-    from ._widget import FilamentAnalyzer
+    from napari_filaments._napari._widget import FilamentAnalyzer
 
 
 def start(viewer: napari.Viewer | None = None) -> FilamentAnalyzer:
     """Lauch viewer with a FilamentAnalyzer widget docked in it."""
-    from ._widget import FilamentAnalyzer
+    from napari_filaments._napari._widget import FilamentAnalyzer
 
     if viewer is None:
         viewer = napari.Viewer()
