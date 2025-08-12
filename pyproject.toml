@@ -54,6 +54,9 @@ himena = [
 [project.entry-points."napari.manifest"]
 napari-filaments = "napari_filaments:napari.yaml"
 
+[project.entry-points."himena.plugin"]
+napari-filaments = "napari_filaments._himena"
+
 [project.urls]
 "Bug Tracker" = "https://github.com/hanjinliu/napari-filaments/issues"
 Documentation = "https://github.com/hanjinliu/napari-filaments#README.md"
@@ -62,7 +65,7 @@ Homepage = "https://github.com/hanjinliu/napari-filaments"
 "User Support" = "https://github.com/hanjinliu/napari-filaments/issues"
 
 [tool.hatch.version]
-path = "napari_filaments/__init__.py"
+path = "src/napari_filaments/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -89,3 +92,6 @@ filterwarnings = [
     "ignore:path is deprecated:DeprecationWarning",
     "ignore:Jupyter is migrating its paths to use standard platformdirs:DeprecationWarning",
 ]
+
+[tool.ruff]
+ignore = ["F722"]

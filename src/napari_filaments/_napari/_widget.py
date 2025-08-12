@@ -35,7 +35,7 @@ from napari_filaments._napari._custom_layers import FilamentsLayer
 if TYPE_CHECKING:  # pragma: no cover
     from magicgui.widgets import ComboBox
 
-ICON_DIR = Path(__file__).parent / "_icon"
+ICON_DIR = Path(__file__).parent.parent / "_icon"
 ICON_KW = dict(text="", min_width=42, min_height=42, max_height=45)
 SMALL_ICON_KW = dict(text="", min_width=20, min_height=28, max_height=30)
 
@@ -45,9 +45,7 @@ ROI_FMT = "[{" + ROI_ID + "}]"
 @mk.register_type(np.ndarray)
 def _format_ndarray(x: np.ndarray):
     if x.ndim != 2:
-        raise RuntimeError(
-            f"{x.ndim}D arrays are not supposed to be an input."
-        )
+        raise RuntimeError(f"{x.ndim}D arrays are not supposed to be an input.")
     return str(x.tolist())
 
 
@@ -76,9 +74,7 @@ class FilamentAnalyzer(MagicTemplate):
     _tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(FilamentsLayer, record=False)
     target_image = vfield(Image, record=False)
-    filament = vfield(int, record=False).with_choices(
-        _get_available_filament_id
-    )
+    filament = vfield(int, record=False).with_choices(_get_available_filament_id)
 
     Tabs = _sw.Tabs
     Tools = _sw.Tools
@@ -102,9 +98,7 @@ class FilamentAnalyzer(MagicTemplate):
         elif filaments is None:
             return self.target_filaments.name
         else:
-            raise TypeError(
-                "`filaments` must be a filaments layer or its name."
-            )
+            raise TypeError("`filaments` must be a filaments layer or its name.")
 
     _ImageLayer = Annotated[
         Image,
@@ -145,9 +139,7 @@ class FilamentAnalyzer(MagicTemplate):
             return
 
         if not isinstance(val, FilamentsLayer):
-            raise TypeError(
-                f"Cannot set type {type(val)} to `last_target_filaments`."
-            )
+            raise TypeError(f"Cannot set type {type(val)} to `last_target_filaments`.")
         self._last_target_filaments = weakref.ref(val)
         return None
 
@@ -208,7 +200,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @set_design(text="Open image", location=_sw.Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+O")
-    def open_image(self, path: Path.Read["*.tif;*.tiff"]):
+    def open_image(self, path: Path.Read["*.tif *.tiff"]):
         """Open a TIF."""
         path = Path(path)
         from tifffile import TiffFile
@@ -241,7 +233,7 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(text="From ImageJ ROI", location=_sw.Tools.Layers.Import)
     def from_roi(
         self,
-        path: Path.Read["*.zip;*.roi;;All files (*)"],
+        path: Path.Read["*.zip *.roi;;All files (*)"],
         filaments: _FilamentsLayer = None,
     ):
         """Import ImageJ Roi zip file as filaments."""
@@ -311,9 +303,7 @@ class FilamentAnalyzer(MagicTemplate):
             json.dump(info, f, indent=2)
         return None
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "fit.png", location=_sw.Tabs.Spline.Both
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "fit.png", location=_sw.Tabs.Spline.Both)
     @bind_key("F1")
     def fit_filament(
         self,
@@ -353,9 +343,7 @@ class FilamentAnalyzer(MagicTemplate):
         """Redo the last spline fit."""
         return self.macro.redo()
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "ext_l.png", location=_sw.Tabs.Spline.Left
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "ext_l.png", location=_sw.Tabs.Spline.Left)
     def extend_left(
         self,
         filaments: _FilamentsLayer = None,
@@ -369,9 +357,7 @@ class FilamentAnalyzer(MagicTemplate):
         out = spl.extend_left(dx)
         return self._update_paths(idx, out, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "ext_r.png", location=_sw.Tabs.Spline.Right
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "ext_r.png", location=_sw.Tabs.Spline.Right)
     def extend_right(
         self,
         filaments: _FilamentsLayer = None,
@@ -427,9 +413,7 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "clip_l.png", location=_sw.Tabs.Spline.Left
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "clip_l.png", location=_sw.Tabs.Spline.Left)
     def truncate_left(
         self,
         filaments: _FilamentsLayer = None,
@@ -444,9 +428,7 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.clip(start, 1.0)
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "clip_r.png", location=_sw.Tabs.Spline.Right
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "clip_r.png", location=_sw.Tabs.Spline.Right)
     def truncate_right(
         self,
         filaments: _FilamentsLayer = None,
@@ -461,9 +443,7 @@ class FilamentAnalyzer(MagicTemplate):
         fit = spl.clip(0.0, stop)
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "erf_l.png", location=_sw.Tabs.Spline.Left
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf_l.png", location=_sw.Tabs.Spline.Left)
     def truncate_left_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
@@ -480,9 +460,7 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "erf_r.png", location=_sw.Tabs.Spline.Right
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf_r.png", location=_sw.Tabs.Spline.Right)
     def truncate_right_at_inflection(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
@@ -499,9 +477,7 @@ class FilamentAnalyzer(MagicTemplate):
         )
         return self._update_paths(idx, fit, filaments, current_slice)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "erf2.png", location=_sw.Tabs.Spline.Both
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "erf2.png", location=_sw.Tabs.Spline.Both)
     def truncate_at_inflections(
         self,
         image: Annotated[Image, {"bind": target_image}] = None,
@@ -679,9 +655,7 @@ class FilamentAnalyzer(MagicTemplate):
         else:
             new_name = f"[Total] {outs.pop()} etc."
 
-        tot_layer = self.parent_viewer.add_image(
-            tot, name=new_name, visible=False
-        )
+        tot_layer = self.parent_viewer.add_image(tot, name=new_name, visible=False)
 
         # update target images
         for layer in self.parent_viewer.layers:
@@ -732,9 +706,7 @@ class FilamentAnalyzer(MagicTemplate):
     #         roilist.append(roi)
     #     roiwrite(path, roilist)
 
-    @set_design(
-        **ICON_KW, icon=ICON_DIR / "del.png", location=_sw.Tabs.Spline.Both
-    )
+    @set_design(**ICON_KW, icon=ICON_DIR / "del.png", location=_sw.Tabs.Spline.Both)
     def delete_filament(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = None,
@@ -793,9 +765,7 @@ class FilamentAnalyzer(MagicTemplate):
 
         new = self.macro.widget.duplicate()
         v = mk.Expr("getattr", [mk.symbol(self), "parent_viewer"])
-        new.textedit.value = self.macro.format(
-            [(mk.symbol(self.parent_viewer), v)]
-        )
+        new.textedit.value = self.macro.format([(mk.symbol(self.parent_viewer), v)])
         new.show()
         return None
 
@@ -845,9 +815,7 @@ class FilamentAnalyzer(MagicTemplate):
 
     @nogui
     @do_not_record
-    def get_spline(
-        self, idx: int, filaments: "FilamentsLayer | None" = None
-    ) -> Spline:
+    def get_spline(self, idx: int, filaments: "FilamentsLayer | None" = None) -> Spline:
         """Get the idx-th spline object."""
         _, filaments = self._check_layers(None, filaments)
         _, spl = self._get_slice_and_spline(idx, filaments)
@@ -891,9 +859,7 @@ class FilamentAnalyzer(MagicTemplate):
             )
         return self.Output._set_labels("Data points", "Intensity")
 
-    def _replace_data(
-        self, idx: int, new_data: np.ndarray, filaments: FilamentsLayer
-    ):
+    def _replace_data(self, idx: int, new_data: np.ndarray, filaments: FilamentsLayer):
         """Replace the idx-th data to the new one."""
         data = filaments.data
         data[idx] = new_data
@@ -941,15 +907,11 @@ class FilamentAnalyzer(MagicTemplate):
             return _out
         return None
 
-    def _fit_i_2d(
-        self, width: float, img: np.ndarray, coords: np.ndarray
-    ) -> Spline:
+    def _fit_i_2d(self, width: float, img: np.ndarray, coords: np.ndarray) -> Spline:
         spl = Spline.fit(coords, degree=1, err=0.0)
         length = spl.length()
         interv = min(8.0, length / 4)
-        rough = spl.fit_filament(
-            img, width=width, interval=interv, spline_error=0.0
-        )
+        rough = spl.fit_filament(img, width=width, interval=interv, spline_error=0.0)
         return rough.fit_filament(img, width=7, spline_error=3e-2)
 
     def _load_filament_coordinates(self, data: "list[np.ndarray]", name: str):
@@ -1009,9 +971,7 @@ class FilamentAnalyzer(MagicTemplate):
         self._add_filament_layer(img_layers, path.stem)
         ndim = self.parent_viewer.dims.ndim
         if ndim == len(axis_labels):
-            self.parent_viewer.dims.set_axis_label(
-                list(range(ndim)), axis_labels
-            )
+            self.parent_viewer.dims.set_axis_label(list(range(ndim)), axis_labels)
         self._on_target_filament_change()  # initialize
         return None
 
