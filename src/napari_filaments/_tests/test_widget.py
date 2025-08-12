@@ -5,7 +5,8 @@ import napari
 import numpy as np
 from numpy.testing import assert_allclose
 
-from napari_filaments import FilamentAnalyzer, start
+from napari_filaments import start
+from napari_filaments._napari._widget import FilamentAnalyzer
 from magicclass import get_button
 import magicclass.testing as mcls_testing
 
@@ -184,7 +185,7 @@ def test_target_change(make_napari_viewer):
 
 
 def test_add_filament_layer(make_napari_viewer):
-    from napari_filaments._custom_layers import FilamentsLayer
+    from napari_filaments._napari._custom_layers import FilamentsLayer
 
     ui = _get_dock_widget(make_napari_viewer)
     img = rng.normal(size=(5, 100, 100))
