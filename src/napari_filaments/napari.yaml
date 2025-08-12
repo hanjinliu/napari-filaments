@@ -3,7 +3,7 @@ display_name: napari filaments
 contributions:
   commands:
     - id: napari-filaments.make_qwidget
-      python_name: napari_filaments._widget:FilamentAnalyzer
+      python_name: napari_filaments._napari._widget:FilamentAnalyzer
       title: Open Filament Analyzer
   widgets:
     - command: napari-filaments.make_qwidget

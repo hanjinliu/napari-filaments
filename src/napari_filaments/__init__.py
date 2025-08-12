@@ -1,8 +1,9 @@
+__version__ = "0.4.0"
+
 from ._spline import Spline
-from ._widget import FilamentAnalyzer
 from .core import start
 
-from importlib_metadata import metadata
+from importlib.metadata import metadata
 
 try:
     __version__ = metadata("napari-filaments")["Version"]

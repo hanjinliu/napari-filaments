@@ -7,7 +7,7 @@ from napari.layers import Shapes
 from napari.utils._magicgui import find_viewer_ancestor
 from psygnal import Signal
 
-from ._consts import ROI_ID
+from napari_filaments._consts import ROI_ID
 
 
 class FilamentsLayer(Shapes):
