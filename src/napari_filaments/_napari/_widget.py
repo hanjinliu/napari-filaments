@@ -270,7 +270,7 @@ class FilamentAnalyzer(MagicTemplate):
         import json
         import magicclass as mcls
 
-        from . import __version__
+        from napari_filaments import __version__
 
         path = Path(path)
         path.mkdir(exist_ok=True)

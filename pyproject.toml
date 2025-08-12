@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Plugin for filament analysis"
 readme = "README.md"
 license = "BSD-3-Clause"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 authors = [
     { name = "Hanjin Liu", email = "liuhanjin.sc@gmail.com" },
 ]
