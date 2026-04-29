@@ -71,7 +71,7 @@ class FilamentAnalyzer(MagicTemplate):
             return []
         return list(range(self.target_filaments.nshapes))
 
-    _tablestack = field(TableStack, name="_Filament Analyzer Tables")
+    tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(FilamentsLayer, record=False)
     target_image = vfield(Image, record=False)
     filament = vfield(int, record=False).with_choices(_get_available_filament_id)
@@ -529,9 +529,9 @@ class FilamentAnalyzer(MagicTemplate):
                 v.append(getattr(measure, k)())
 
         sl_data.update(data)
-        tstack = self._tablestack
+        tstack = self.tablestack
         tstack.add_table(sl_data, name=filaments.name)
-        tstack.show()
+        tstack.show(run=False)
 
         # NOTE: Updating features are not safe. If user added new filaments
         # after measuring, new filaments will initialized with duplicated
