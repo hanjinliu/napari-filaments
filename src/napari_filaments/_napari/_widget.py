@@ -999,7 +999,7 @@ class FilamentAnalyzer(MagicTemplate):
         layer.data_added.connect(self._on_data_added)
         layer.data_removed.connect(self._on_data_removed)
         layer.draw_finished.connect(self._on_data_draw_finished)
-        layer.mode = "add_path"
+        layer.mode = "add_polyline"
         self.target_filaments = layer
         return layer
 
@@ -1078,17 +1078,17 @@ def _toggle_target_images(shapes: FilamentsLayer, visible: bool):
     shapes.visible = visible
 
 
-def _assert_single_selection(idx: "int | set[int]") -> int:
-    if isinstance(idx, set):
+def _assert_single_selection(idx: "int | Iterable[int]") -> int:
+    if hasattr(idx, "__iter__") and not np.isscalar(idx):
         if len(idx) != 1:
             raise ValueError("Multiple selection")
-        return next(iter(idx))
-    return idx
+        return int(next(iter(idx)))
+    return int(idx)
 
 
 def _arrange_selection(idx: "int | set[int]") -> "list[int]":
-    if isinstance(idx, int):
-        return [idx]
+    if np.isscalar(idx):
+        return [int(idx)]
     else:
         return sorted(list(idx), reverse=True)
 
