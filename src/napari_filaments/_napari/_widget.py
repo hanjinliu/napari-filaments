@@ -716,8 +716,10 @@ class FilamentAnalyzer(MagicTemplate):
         _, filaments = self._check_layers(None, filaments)
         if idx is None:
             idx = {self.filament}
-        if isinstance(idx, int):
+        elif np.isscalar(idx):
             idx = {idx}
+        else:
+            idx = set(idx)
         # keep current state for undoing
         data_info = {
             i: (
