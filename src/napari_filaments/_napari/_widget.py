@@ -71,7 +71,7 @@ class FilamentAnalyzer(MagicTemplate):
             return []
         return list(range(self.target_filaments.nshapes))
 
-    _tablestack = field(TableStack, name="_Filament Analyzer Tables")
+    tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(FilamentsLayer, record=False)
     target_image = vfield(Image, record=False)
     filament = vfield(int, record=False).with_choices(_get_available_filament_id)
@@ -529,9 +529,9 @@ class FilamentAnalyzer(MagicTemplate):
                 v.append(getattr(measure, k)())
 
         sl_data.update(data)
-        tstack = self._tablestack
+        tstack = self.tablestack
         tstack.add_table(sl_data, name=filaments.name)
-        tstack.show()
+        tstack.show(run=False)
 
         # NOTE: Updating features are not safe. If user added new filaments
         # after measuring, new filaments will initialized with duplicated
@@ -716,8 +716,10 @@ class FilamentAnalyzer(MagicTemplate):
         _, filaments = self._check_layers(None, filaments)
         if idx is None:
             idx = {self.filament}
-        if isinstance(idx, int):
+        elif np.isscalar(idx):
             idx = {idx}
+        else:
+            idx = set(idx)
         # keep current state for undoing
         data_info = {
             i: (
@@ -999,7 +1001,7 @@ class FilamentAnalyzer(MagicTemplate):
         layer.data_added.connect(self._on_data_added)
         layer.data_removed.connect(self._on_data_removed)
         layer.draw_finished.connect(self._on_data_draw_finished)
-        layer.mode = "add_path"
+        layer.mode = "add_polyline"
         self.target_filaments = layer
         return layer
 
@@ -1078,17 +1080,17 @@ def _toggle_target_images(shapes: FilamentsLayer, visible: bool):
     shapes.visible = visible
 
 
-def _assert_single_selection(idx: "int | set[int]") -> int:
-    if isinstance(idx, set):
+def _assert_single_selection(idx: "int | Iterable[int]") -> int:
+    if hasattr(idx, "__iter__") and not np.isscalar(idx):
         if len(idx) != 1:
             raise ValueError("Multiple selection")
-        return next(iter(idx))
-    return idx
+        return int(next(iter(idx)))
+    return int(idx)
 
 
 def _arrange_selection(idx: "int | set[int]") -> "list[int]":
-    if isinstance(idx, int):
-        return [idx]
+    if np.isscalar(idx):
+        return [int(idx)]
     else:
         return sorted(list(idx), reverse=True)
 

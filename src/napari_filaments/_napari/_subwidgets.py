@@ -129,7 +129,7 @@ class Output(MagicTemplate):
                 data[f"{ylabel}-{i}"] = y
         else:
             data = {xlabel: self._xdata, ylabel: self._ydata}
-        tstack = self.find_ancestor(FilamentAnalyzer)._tablestack
+        tstack = self.find_ancestor(FilamentAnalyzer).tablestack
         tstack.add_table(data, name="Plot data")
         tstack.show()
 
