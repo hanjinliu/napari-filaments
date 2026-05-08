@@ -74,6 +74,7 @@ class FilamentAnalyzer(MagicTemplate):
     tablestack = field(TableStack, name="_Filament Analyzer Tables")
     target_filaments = vfield(FilamentsLayer, record=False)
     target_image = vfield(Image, record=False)
+    target_image_truncate = vfield(Image, record=False)
     filament = vfield(int, record=False).with_choices(_get_available_filament_id)
 
     Tabs = _sw.Tabs
@@ -86,7 +87,17 @@ class FilamentAnalyzer(MagicTemplate):
         elif isinstance(image, Image):
             return image.name
         elif image is None:
-            return self.target_filaments.name
+            return self.target_image.name
+        else:
+            raise TypeError("`image` must be an image layer or its name.")
+
+    def _validate_image_truncate_layer(self, image, args) -> str:
+        if isinstance(image, str):
+            return image
+        elif isinstance(image, Image):
+            return image.name
+        elif image is None:
+            return self.target_image_truncate.name
         else:
             raise TypeError("`image` must be an image layer or its name.")
 
@@ -103,6 +114,10 @@ class FilamentAnalyzer(MagicTemplate):
     _ImageLayer = Annotated[
         Image,
         {"bind": target_image, "validator": _validate_image_layer},
+    ]
+    _ImageTruncateLayer = Annotated[
+        Image,
+        {"bind": target_image_truncate, "validator": _validate_image_truncate_layer},
     ]
     _FilamentsLayer = Annotated[
         FilamentsLayer,
@@ -141,7 +156,6 @@ class FilamentAnalyzer(MagicTemplate):
         if not isinstance(val, FilamentsLayer):
             raise TypeError(f"Cannot set type {type(val)} to `last_target_filaments`.")
         self._last_target_filaments = weakref.ref(val)
-        return None
 
     @target_filaments.connect
     def _on_target_filament_change(self):
@@ -171,9 +185,8 @@ class FilamentAnalyzer(MagicTemplate):
                 cbox.value = max(cbox.choices)
             except Exception:
                 pass
-        self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
         self._on_filament_change(self.filament)
-        return None
+        self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
 
     @filament.connect
     def _on_filament_change(self, idx: "int | None"):
@@ -196,7 +209,6 @@ class FilamentAnalyzer(MagicTemplate):
         layer.text.color = colors
         if layer.text.color.encoding_type == "ManualColorEncoding":
             layer.text.color.default = "white"
-        return None
 
     @set_design(text="Open image", location=_sw.Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+O")
@@ -307,7 +319,7 @@ class FilamentAnalyzer(MagicTemplate):
     @bind_key("F1")
     def fit_filament(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         width: Annotated[float, {"bind": Tools.Parameters.lattice_width}] = 9,
@@ -378,7 +390,7 @@ class FilamentAnalyzer(MagicTemplate):
     )
     def extend_and_fit_left(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
@@ -399,7 +411,7 @@ class FilamentAnalyzer(MagicTemplate):
     )
     def extend_and_fit_right(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
         dx: Annotated[float, {"bind": Tools.Parameters.dx}] = 5.0,
@@ -446,7 +458,7 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf_l.png", location=_sw.Tabs.Spline.Left)
     def truncate_left_at_inflection(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageTruncateLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
@@ -463,7 +475,7 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf_r.png", location=_sw.Tabs.Spline.Right)
     def truncate_right_at_inflection(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageTruncateLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
@@ -480,7 +492,7 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(**ICON_KW, icon=ICON_DIR / "erf2.png", location=_sw.Tabs.Spline.Both)
     def truncate_at_inflections(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageTruncateLayer = None,
         filaments: _FilamentsLayer = None,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
     ):
@@ -499,7 +511,7 @@ class FilamentAnalyzer(MagicTemplate):
     @set_design(text="Measure properties", location=_sw.Tools.Filaments)
     def measure_properties(
         self,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
         properties: Annotated[
             list[str],
@@ -585,7 +597,7 @@ class FilamentAnalyzer(MagicTemplate):
     def plot_profile(
         self,
         idx: Annotated[int, {"bind": _get_idx}] = -1,
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
     ):
         """Plot intensity profile using the selected image layer and the filament."""
@@ -609,7 +621,7 @@ class FilamentAnalyzer(MagicTemplate):
         self,
         idx: Annotated[int, {"bind": _get_idx}],
         time_axis: Annotated[str, {"bind": _get_axes}],
-        image: Annotated[Image, {"bind": target_image}] = None,
+        image: _ImageLayer = None,
         filaments: _FilamentsLayer = None,
     ):
         """Plot kymograph using the selected image layer and the filament."""
@@ -765,18 +777,24 @@ class FilamentAnalyzer(MagicTemplate):
         """Create an executable Python script."""
         import macrokit as mk
 
-        new = self.macro.widget.duplicate()
+        new = self.macro.widget.new_window(tabname="Macro")
         v = mk.Expr("getattr", [mk.symbol(self), "parent_viewer"])
         new.textedit.value = self.macro.format([(mk.symbol(self.parent_viewer), v)])
+
+        bg_color = self.native.palette().color(self.native.backgroundRole())
+        if bg_color.lightness() > 128:
+            theme = "default"
+        else:
+            theme = "native"
+
+        new.textedit.syntax_highlight(lang="python", theme=theme)
         new.show()
-        return None
 
     @set_design(text="Show macro", location=_sw.Tools.Others)
     @do_not_record
     def show_macro(self):
         """Show the macro widget."""
         self.macro.widget.show()
-        return None
 
     @set_design(text="Send widget to viewer", location=_sw.Tools.Others)
     @do_not_record
@@ -939,16 +957,16 @@ class FilamentAnalyzer(MagicTemplate):
     def _filter_image_choices(self):
         if not self.Tools.Parameters.target_image_filter:
             return
-        target_image_widget: ComboBox = self["target_image"]
-        if target_image_widget.value is None:
-            return
-        cbox_idx = target_image_widget.choices.index(target_image_widget.value)
         img_layers = _get_connected_target_image_layers(self.target_filaments)
-        if len(img_layers) > 0:
-            target_image_widget.choices = img_layers
-            cbox_idx = min(cbox_idx, len(img_layers) - 1)
-            target_image_widget.value = target_image_widget.choices[cbox_idx]
-        return None
+        for widget_name in ["target_image", "target_image_truncate"]:
+            target_image_widget: ComboBox = self[widget_name]
+            if target_image_widget.value is None:
+                return
+            cbox_idx = target_image_widget.choices.index(target_image_widget.value)
+            if len(img_layers) > 0:
+                target_image_widget.choices = img_layers
+                cbox_idx = min(cbox_idx, len(img_layers) - 1)
+                target_image_widget.value = target_image_widget.choices[cbox_idx]
 
     def _add_image(self, img: np.ndarray, axes: str, path: Path):
         if "C" in axes:
