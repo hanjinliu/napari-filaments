@@ -87,7 +87,17 @@ class FilamentAnalyzer(MagicTemplate):
         elif isinstance(image, Image):
             return image.name
         elif image is None:
-            return self.target_filaments.name
+            return self.target_image.name
+        else:
+            raise TypeError("`image` must be an image layer or its name.")
+
+    def _validate_image_truncate_layer(self, image, args) -> str:
+        if isinstance(image, str):
+            return image
+        elif isinstance(image, Image):
+            return image.name
+        elif image is None:
+            return self.target_image_truncate.name
         else:
             raise TypeError("`image` must be an image layer or its name.")
 
@@ -107,7 +117,7 @@ class FilamentAnalyzer(MagicTemplate):
     ]
     _ImageTruncateLayer = Annotated[
         Image,
-        {"bind": target_image_truncate, "validator": _validate_image_layer},
+        {"bind": target_image_truncate, "validator": _validate_image_truncate_layer},
     ]
     _FilamentsLayer = Annotated[
         FilamentsLayer,
