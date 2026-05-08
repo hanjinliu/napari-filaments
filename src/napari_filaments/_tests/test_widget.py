@@ -294,3 +294,4 @@ def test_copy_filament(make_napari_viewer):
     ui.open_image(IMAGE_PATH)
     ui.add_filament_data([[48, 31], [55, 86]])
     ui.copy_filament()
+    ui.create_macro()
