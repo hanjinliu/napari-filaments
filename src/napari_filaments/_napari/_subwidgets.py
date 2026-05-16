@@ -29,7 +29,6 @@ class Tools(MagicTemplate):
         export_roi = abstractapi()
         sep1 = field(Separator)
         create_total_intensity = abstractapi()
-        # def export_roi(self): ...
 
     @magicmenu(icon="teenyicons:adjust-horizontal-solid")
     class Parameters(MagicTemplate):
