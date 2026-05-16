@@ -26,6 +26,7 @@ class Tools(MagicTemplate):
             from_roi = abstractapi()
         sep0 = field(Separator)
         save_filaments = abstractapi()
+        export_roi = abstractapi()
         sep1 = field(Separator)
         create_total_intensity = abstractapi()
         # def export_roi(self): ...
