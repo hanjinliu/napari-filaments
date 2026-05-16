@@ -73,6 +73,7 @@ def test_io(make_napari_viewer):
     data0 = ui.target_filaments.data
 
     ui.save_filaments(ui.target_filaments, SAVE_PATH)
+    ui.export_roi(ui.target_filaments, SAVE_PATH / "filaments.zip")
     ui.open_filaments(SAVE_PATH)
 
     data1 = ui.target_filaments.data

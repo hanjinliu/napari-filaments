@@ -1,6 +1,6 @@
 import re
 import weakref
-from typing import TYPE_CHECKING, Iterable, TypeVar, Annotated
+from typing import TYPE_CHECKING, Any, Iterable, TypeVar, Annotated
 
 import numpy as np
 from numpy.typing import NDArray
@@ -681,42 +681,33 @@ class FilamentAnalyzer(MagicTemplate):
                 img_layers.append(tot_layer)
         return None
 
-    # TODO: how to save at subpixel resolution?
-    # @set_options(path={"mode": "w", "filter": ".zip"})
-    # @set_design(text="Export ROI", location=Tools.Layers)
-    # def export_roi(self, layer: FilamentsLayer, path: Path):
-    #     """Export filament layer as a ImageJ ROI.zip file."""
-    #
-    #     from roifile import roiwrite, ImagejRoi, ROI_TYPE, ROI_OPTIONS
-    #     roilist: List[ImagejRoi] = []
-    #     multi_labels = self.parent_viewer.dims.axis_labels[:-2]
-    #     roi_id = layer.features[ROI_ID]
-    #     for i, data in enumerate(layer.data):
-    #         multi, coords = _split_slice_and_path(data)
-    #         n = len(multi)
-    #         dim_kwargs = {
-    #             f"{l.lower()}_position": p + 1
-    #             for l, p in zip(multi_labels[-n:], multi)
-    #         }
-    #         h, w = np.max(coords, axis=0)
-    #         edge_kwargs = dict(
-    #             left=0,
-    #             top=0,
-    #             right=int(w) + 2,
-    #             bottom=int(h) + 2,
-    #             n_coordinates=coords.shape[0],
-    #         )
-    #         roi = ImagejRoi(
-    #             roitype=ROI_TYPE.POLYLINE,
-    #             options=ROI_OPTIONS.SUB_PIXEL_RESOLUTION,
-    #             # integer_coordinates=coords[:, ::-1].astype(np.uint16) + 1,
-    #             subpixel_coordinates=coords[:, ::-1] + 1,
-    #             name=f"Filament-{roi_id[i]}",
-    #             **dim_kwargs,
-    #             **edge_kwargs,
-    #         )
-    #         roilist.append(roi)
-    #     roiwrite(path, roilist)
+    @set_options(path={"mode": "w", "filter": ".zip"})
+    @set_design(text="Export ROI", location=Tools.Layers)
+    def export_roi(self, layer: FilamentsLayer, path: Path):
+        """Export filament layer as a ImageJ ROI.zip file."""
+        from roifile import roiwrite, ImagejRoi, ROI_TYPE
+
+        roilist: list[ImagejRoi] = []
+        multi_labels = self.parent_viewer.dims.axis_labels[:-2]
+        roi_id = layer.features[ROI_ID]
+        ndigits = max(len(str(layer.nshapes)), 2)
+        for i, data in enumerate(layer.data):
+            multi, coords = _split_slice_and_path(data)
+            n = len(multi)
+            dim_kwargs = {
+                f"{_label.lower()}_position": _pos + 1
+                for _label, _pos in zip(multi_labels[-n:], multi)
+            }
+            ij_kwargs = _to_ij_kwargs(coords)
+            roi = ImagejRoi(
+                roitype=ROI_TYPE.POLYLINE,
+                **ij_kwargs,
+                **dim_kwargs,
+                name=f"Filament-{roi_id[i]:0>{ndigits}}",
+            )
+            roilist.append(roi)
+        path.unlink(missing_ok=True)
+        roiwrite(path, roilist)
 
     @set_design(**ICON_KW, icon=ICON_DIR / "del.png", location=_sw.Tabs.Spline.Both)
     def delete_filament(
@@ -1150,3 +1141,21 @@ def _cmap_to_mpl_cmap(image: Image, name="no-name"):
 
     cmap = image.colormap
     return LinearSegmentedColormap.from_list("custom", cmap.colors)
+
+
+def _to_ij_kwargs(coords: np.ndarray) -> dict[str, Any]:
+    from roifile import ROI_OPTIONS
+
+    coords = coords[:, ::-1]
+    int_coords = coords.round().astype(np.int32)
+    left_top = int_coords.min(axis=0)
+    return {
+        "integer_coordinates": int_coords - left_top,
+        "subpixel_coordinates": np.asarray(coords, dtype=np.float32),
+        "n_coordinates": coords.shape[0],
+        "options": ROI_OPTIONS.SUB_PIXEL_RESOLUTION,
+        "top": int(int_coords[:, 1].min()),
+        "left": int(int_coords[:, 0].min()),
+        "bottom": int(int_coords[:, 1].max() + 1),
+        "right": int(int_coords[:, 0].max() + 1),
+    }
