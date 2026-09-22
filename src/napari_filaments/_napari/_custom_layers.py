@@ -23,9 +23,10 @@ class FilamentsLayer(Shapes):
 
     def add(self, data, *, shape_type="rectangle", **kwargs):
         next_id = self.nshapes
-        props = self.current_properties
-        props[ROI_ID] = next_id
-        self.current_properties = props
+        with self.block_update_properties():
+            props = self.current_properties
+            props[ROI_ID] = next_id
+            self.current_properties = props
         out = super().add(data, shape_type=shape_type, **kwargs)
         self.data_added.emit()
         return out
@@ -52,7 +53,6 @@ class FilamentsLayer(Shapes):
         feat = self.features
         feat[ROI_ID] = np.arange(self.nshapes)
         self.features = feat
-        return None
 
 
 def get_filaments_layer(gui: CategoricalWidget) -> list[FilamentsLayer]:

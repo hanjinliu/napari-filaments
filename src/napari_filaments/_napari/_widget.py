@@ -131,7 +131,7 @@ class FilamentAnalyzer(MagicTemplate):
         self.objectName()  # activate napari namespace
         self.macro.options.syntax_highlight = True
 
-    def _get_idx(self, w=None) -> "int | set[int]":
+    def _get_idx(self, w=None) -> "int | list[int]":
         if self.target_filaments is None:
             return 0
         sel = self.target_filaments.selected_data
@@ -139,7 +139,9 @@ class FilamentAnalyzer(MagicTemplate):
             if self.target_filaments.nshapes == 0:
                 raise ValueError("No filament is selected.")
             return self.target_filaments.nshapes - 1
-        return sel
+        elif len(sel) == 1:
+            return list(sel)[0]
+        return sorted(sel)
 
     @property
     def last_target_filaments(self) -> "FilamentsLayer | None":
@@ -198,10 +200,11 @@ class FilamentAnalyzer(MagicTemplate):
         self.parent_viewer.dims.set_current_step(np.arange(len(_sl)), _sl)
         layer.selected_data = {idx}
 
-        props = layer.current_properties
-        next_id = layer.nshapes
-        props[ROI_ID] = next_id
-        layer.current_properties = props
+        with layer.block_update_properties():
+            props = layer.current_properties
+            next_id = layer.nshapes
+            props[ROI_ID] = next_id
+            layer.current_properties = props
 
         # update text color
         colors = np.full((layer.nshapes, 4), 1.0)
@@ -234,7 +237,6 @@ class FilamentAnalyzer(MagicTemplate):
             df = pd.read_csv(p)
             all_csv.append(df.values)
         self._load_filament_coordinates(all_csv, f"[F] {path.stem}")
-        return None
 
     @set_design(text="Add filaments", location=_sw.Tools.Layers)
     def add_filaments(self):
@@ -272,7 +274,6 @@ class FilamentAnalyzer(MagicTemplate):
             stacked = np.stack([d] * yx.shape[0], axis=0)
             multi_coords = np.concatenate([stacked, yx], axis=1)
             filaments.add_paths(multi_coords)
-        return None
 
     @set_design(text="Save filaments", location=_sw.Tools.Layers)
     @bind_key("Ctrl+K, Ctrl+S")
@@ -288,6 +289,8 @@ class FilamentAnalyzer(MagicTemplate):
         path.mkdir(exist_ok=True)
         labels = self.parent_viewer.dims.axis_labels
         roi_id = layer.features[ROI_ID]
+        roi_id = roi_id.reset_index(drop=True)
+        assert roi_id.nunique() == layer.nshapes
 
         ndigits = max(len(str(layer.nshapes)), 2)
         # save filaments
@@ -311,9 +314,8 @@ class FilamentAnalyzer(MagicTemplate):
             "date": datetime.datetime.now().isoformat(sep=" "),
             "images": _get_image_sources(layer),
         }
-        with open(path / "info.json", "w") as f:
-            json.dump(info, f, indent=2)
-        return None
+        info_str = json.dumps(info, indent=2)
+        path.joinpath("info.json").write_text(info_str)
 
     @set_design(**ICON_KW, icon=ICON_DIR / "fit.png", location=_sw.Tabs.Spline.Both)
     @bind_key("F1")
@@ -797,8 +799,7 @@ class FilamentAnalyzer(MagicTemplate):
     def add_filament_data(
         self, data: np.ndarray, layer: "FilamentsLayer | None" = None
     ):
-        """
-        Add a new filament data to the layer.
+        """Add a new filament data to the layer.
 
         Parameters
         ----------
@@ -813,16 +814,16 @@ class FilamentAnalyzer(MagicTemplate):
             layer.add_paths(data)
 
         @undo_callback
-        def _undo():
+        def _out():
             layer.data = layer.data[:-1]
 
-        @_undo.with_redo
-        def _undo():
+        @_out.with_redo
+        def _out():
             with layer.data_added.blocked():
                 layer.add_paths(data)
 
-        self["filament"].reset_choices()
-        return _undo
+        self._reset_filament_choices()
+        return _out
 
     @nogui
     @do_not_record
@@ -875,9 +876,9 @@ class FilamentAnalyzer(MagicTemplate):
         data = filaments.data
         data[idx] = new_data
         filaments.data = data
+        self._reset_filament_choices()
         self.filament = idx
         filaments.selected_data = {idx}
-        return None
 
     def _update_paths(
         self,
@@ -987,14 +988,14 @@ class FilamentAnalyzer(MagicTemplate):
         return None
 
     def _on_data_added(self):
-        self["filament"].reset_choices()
+        self._reset_filament_choices()
         if self.target_filaments.nshapes > 0:
             self.filament = self.target_filaments.nshapes - 1
             self.target_filaments.selected_data = {}
             self.target_filaments.refresh()
 
     def _on_data_removed(self):
-        self["filament"].reset_choices()
+        self._reset_filament_choices()
         self._on_filament_change(self.filament)
 
     def _on_data_draw_finished(self, layer: FilamentsLayer):
@@ -1004,6 +1005,9 @@ class FilamentAnalyzer(MagicTemplate):
             self.add_filament_data(added_data, layer=layer)
             if layer.nshapes > 0:
                 self._on_filament_change(layer.nshapes - 1)
+        self._reset_filament_choices()
+
+    def _reset_filament_choices(self):
         self["filament"].reset_choices()
 
     def _set_filament_layer(self, layer: FilamentsLayer):
