@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 testing = [
     "napari",
-    "pyqt5",
+    "pyqt6",
     "pytest",
     "pytest-cov",
     "pytest-qt",

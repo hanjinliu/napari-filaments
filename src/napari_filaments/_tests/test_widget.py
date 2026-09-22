@@ -282,6 +282,32 @@ def test_delete(make_napari_viewer):
     assert list(ui.target_filaments.features[ROI_ID]) == [0, 1]
 
 
+def test_roi_id_stable_across_selection(make_napari_viewer):
+    # regression test: selecting an existing filament (which updates
+    # `current_properties` for the next-added shape) must not overwrite the
+    # ROI_ID of the currently selected shape.
+    from napari_filaments._consts import ROI_ID
+
+    ui = _get_dock_widget(make_napari_viewer)
+    ui.open_image(IMAGE_PATH)
+    ui.add_filament_data([[48, 30], [55, 86]])
+    ui.fit_filament()
+    ui.add_filament_data([[48, 31], [55, 86]])
+    ui.fit_filament()
+
+    # switching the active filament (as happens when the user picks a
+    # filament in "select" mode) used to corrupt the selected shape's ID
+    ui.target_filaments.mode = "select"
+    ui.filament = 0
+    ui.filament = 1
+    ui.filament = 0
+
+    ui.add_filament_data([[48, 32], [55, 86]])
+    ui.fit_filament()
+
+    assert list(ui.target_filaments.features[ROI_ID]) == [0, 1, 2]
+
+
 def test_kymograph(make_napari_viewer):
     ui = _get_dock_widget(make_napari_viewer)
     img = rng.normal(size=(5, 100, 100))
